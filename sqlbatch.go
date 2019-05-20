@@ -37,7 +37,19 @@ type StructInfo struct {
 	//   `db:"column:foo"`             - rename the column
 	//   `db:"primary_key"`            - assume column is a primary key
 	//   `db:"column:foo,primary_key"` - both (comma separated)
-	Fields []FieldInfo
+	Fields         []FieldInfo
+	PrimaryKeys    []*FieldInfo
+	NonPrimaryKeys []*FieldInfo
+}
+
+func filterPrimaryKeys(fields []FieldInfo, v bool) []*FieldInfo {
+	var out []*FieldInfo
+	for i := range fields {
+		if fields[i].PrimaryKey == v {
+			out = append(out, &fields[i])
+		}
+	}
+	return out
 }
 
 var structInfoCache = map[reflect.Type]*StructInfo{}
@@ -216,9 +228,11 @@ func ScanStruct(t reflect.Type, offset uintptr, custom FieldInterfaceResolver) *
 	}
 
 	return &StructInfo{
-		Name:       structName,
-		QuotedName: pq.QuoteIdentifier(structName),
-		Fields:     fields,
+		Name:           structName,
+		QuotedName:     pq.QuoteIdentifier(structName),
+		Fields:         fields,
+		PrimaryKeys:    filterPrimaryKeys(fields, true),
+		NonPrimaryKeys: filterPrimaryKeys(fields, false),
 	}
 }
 
@@ -230,9 +244,7 @@ func New() *Batch {
 	return &Batch{}
 }
 
-func (b *Batch) Insert(v interface{}) {
-	structVal := reflect.ValueOf(v)
-	t := structVal.Type()
+func assertPointerToStruct(t reflect.Type) reflect.Type {
 	if t.Kind() != reflect.Ptr {
 		panic("pointer to struct expected")
 	}
@@ -240,6 +252,18 @@ func (b *Batch) Insert(v interface{}) {
 	if t.Kind() != reflect.Struct {
 		panic("pointer to struct expected")
 	}
+	return t
+}
+
+func assertHasPrimaryKeys(si *StructInfo) {
+	if len(si.PrimaryKeys) == 0 {
+		panic("struct has no primary keys defined")
+	}
+}
+
+func (b *Batch) Insert(v interface{}) {
+	structVal := reflect.ValueOf(v)
+	t := assertPointerToStruct(structVal.Type())
 
 	ptr := unsafe.Pointer(structVal.Pointer())
 	si := GetStructInfo(t, CustomFieldInterfaceResolver)
@@ -265,6 +289,41 @@ func (b *Batch) Insert(v interface{}) {
 		f.Interface.Write(ptr, sb)
 	}
 	sb.WriteString(") RETURNING NOTHING")
+}
+
+func (b *Batch) Update(v interface{}) {
+	structVal := reflect.ValueOf(v)
+	t := assertPointerToStruct(structVal.Type())
+
+	ptr := unsafe.Pointer(structVal.Pointer())
+	si := GetStructInfo(t, CustomFieldInterfaceResolver)
+	assertHasPrimaryKeys(si)
+
+	sb := &b.stmtBuilder
+	if sb.Len() != 0 {
+		sb.WriteString("; ")
+	}
+	sb.WriteString("UPDATE ")
+	sb.WriteString(si.QuotedName)
+	sb.WriteString(" SET ")
+	for i, f := range si.NonPrimaryKeys {
+		if i != 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(f.QuotedName)
+		sb.WriteString(" = ")
+		f.Interface.Write(ptr, sb)
+	}
+	sb.WriteString(" WHERE ")
+	for i, f := range si.PrimaryKeys {
+		if i != 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(f.QuotedName)
+		sb.WriteString(" = ")
+		f.Interface.Write(ptr, sb)
+	}
+	sb.WriteString(" RETURNING NOTHING")
 }
 
 func (b *Batch) Query() string {

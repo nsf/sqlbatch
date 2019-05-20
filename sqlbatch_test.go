@@ -12,7 +12,7 @@ import (
 
 func TestBatchInsert(t *testing.T) {
 	type FooBar struct {
-		ID        int
+		ID        int `db:"primary_key"`
 		Foo       string
 		Bar       string
 		CreatedAt time.Time
@@ -21,6 +21,8 @@ func TestBatchInsert(t *testing.T) {
 	b := New()
 	b.Insert(&FooBar{ID: 1, Foo: "foo 1", Bar: "bar 1", CreatedAt: time.Now()})
 	b.Insert(&FooBar{ID: 2, Foo: "foo 2", Bar: "bar 2", CreatedAt: time.Now()})
+	b.Update(&FooBar{ID: 1, Foo: "foo 222", Bar: "bar 222", CreatedAt: time.Now()})
+	b.Update(&FooBar{ID: 2, Foo: "foo 222", Bar: "bar 222", CreatedAt: time.Now()})
 	query := b.Query()
 	t.Log(query)
 
