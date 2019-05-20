@@ -167,7 +167,7 @@ func TestGetStructInfo(t *testing.T) {
 		},
 	}
 	ptr := unsafe.Pointer(v)
-	si := GetStructInfo(reflect.TypeOf(v).Elem(), nil, nil)
+	si := GetStructInfo(reflect.TypeOf(v).Elem(), nil)
 
 	assertField := func(idx *int, fs []FieldInfo, name string, val interface{}, primaryKey bool) {
 		f := fs[*idx]
@@ -177,7 +177,7 @@ func TestGetStructInfo(t *testing.T) {
 		}
 
 		var fval interface{}
-		f.GetValue(ptr, &fval)
+		f.Interface.Get(ptr, &fval)
 		if !reflect.DeepEqual(fval, val) {
 			t.Errorf("field %q value mismatch: %v != %v", f.Name, fval, val)
 		}

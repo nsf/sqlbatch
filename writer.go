@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"github.com/lib/pq"
 	"math"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -14,74 +13,7 @@ import (
 
 // Here we describe how to format all driver.Value variants.
 
-type StructFieldWriterFuncResolver func(t reflect.Type, offset uintptr) (StructFieldWriterFunc, bool)
-
-func resolveCustomWriter(t reflect.Type, offset uintptr, custom StructFieldWriterFuncResolver) (StructFieldWriterFunc, bool) {
-	if custom == nil {
-		return nil, false
-	} else {
-		return custom(t, offset)
-	}
-}
-
-func MakeStructFieldWriterFuncForField(t reflect.StructField, offset uintptr, custom StructFieldWriterFuncResolver) StructFieldWriterFunc {
-	o := t.Offset + offset
-	switch t.Type.Kind() {
-	case reflect.Bool:
-		return makeBoolWriter(o)
-	case reflect.Int:
-		return makeIntWriter(o)
-	case reflect.Int8:
-		return makeInt8Writer(o)
-	case reflect.Int16:
-		return makeInt16Writer(o)
-	case reflect.Int32:
-		return makeInt32Writer(o)
-	case reflect.Int64:
-		return makeInt64Writer(o)
-	case reflect.Uint:
-		return makeUintWriter(o)
-	case reflect.Uint8:
-		return makeUint8Writer(o)
-	case reflect.Uint16:
-		return makeUint16Writer(o)
-	case reflect.Uint32:
-		return makeUint32Writer(o)
-	case reflect.Uint64:
-		return makeUint64Writer(o)
-	case reflect.String:
-		return makeStringWriter(o)
-	case reflect.Float32:
-		return makeFloat32Writer(o)
-	case reflect.Float64:
-		return makeFloat64Writer(o)
-	case reflect.Slice:
-		if t.Type.Elem().Kind() == reflect.Uint8 { // byte slice
-			return makeByteSliceWriter(o)
-		}
-	case reflect.Struct:
-		if writer, ok := resolveCustomWriter(t.Type, o, custom); ok {
-			return writer
-		} else if t.Type == reflect.TypeOf(time.Time{}) {
-			return makeTimeWriter(o)
-		} else if t.Type == reflect.TypeOf(sql.NullBool{}) {
-			return makeNullBoolWriter(o)
-		} else if t.Type == reflect.TypeOf(sql.NullFloat64{}) {
-			return makeNullFloat64Writer(o)
-		} else if t.Type == reflect.TypeOf(sql.NullInt64{}) {
-			return makeNullInt64Writer(o)
-		} else if t.Type == reflect.TypeOf(sql.NullString{}) {
-			return makeNullStringWriter(o)
-		} else if t.Type == reflect.TypeOf(pq.NullTime{}) {
-			return makeNullTimeWriter(o)
-		}
-	}
-	panic("unsupported field type: " + t.Type.String())
-}
-
-//--------------------------------------------------------------------------
-
-func makeNullBoolWriter(offset uintptr) StructFieldWriterFunc {
+func makeNullBoolWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*sql.NullBool)(p)
@@ -89,7 +21,7 @@ func makeNullBoolWriter(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeNullFloat64Writer(offset uintptr) StructFieldWriterFunc {
+func makeNullFloat64Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*sql.NullFloat64)(p)
@@ -97,7 +29,7 @@ func makeNullFloat64Writer(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeNullInt64Writer(offset uintptr) StructFieldWriterFunc {
+func makeNullInt64Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*sql.NullInt64)(p)
@@ -105,7 +37,7 @@ func makeNullInt64Writer(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeNullStringWriter(offset uintptr) StructFieldWriterFunc {
+func makeNullStringWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*sql.NullString)(p)
@@ -113,7 +45,7 @@ func makeNullStringWriter(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeNullTimeWriter(offset uintptr) StructFieldWriterFunc {
+func makeNullTimeWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*pq.NullTime)(p)
@@ -123,7 +55,7 @@ func makeNullTimeWriter(offset uintptr) StructFieldWriterFunc {
 
 //--------------------------------------------------------------------------
 
-func makeTimeWriter(offset uintptr) StructFieldWriterFunc {
+func makeTimeWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*time.Time)(p)
@@ -131,7 +63,7 @@ func makeTimeWriter(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeByteSliceWriter(offset uintptr) StructFieldWriterFunc {
+func makeByteSliceWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*[]byte)(p)
@@ -141,7 +73,7 @@ func makeByteSliceWriter(offset uintptr) StructFieldWriterFunc {
 
 //--------------------------------------------------------------------------
 
-func makeBoolWriter(offset uintptr) StructFieldWriterFunc {
+func makeBoolWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*bool)(p)
@@ -149,7 +81,7 @@ func makeBoolWriter(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeStringWriter(offset uintptr) StructFieldWriterFunc {
+func makeStringWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*string)(p)
@@ -159,7 +91,7 @@ func makeStringWriter(offset uintptr) StructFieldWriterFunc {
 
 //--------------------------------------------------------------------------
 
-func makeFloat32Writer(offset uintptr) StructFieldWriterFunc {
+func makeFloat32Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*float32)(p)
@@ -167,7 +99,7 @@ func makeFloat32Writer(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeFloat64Writer(offset uintptr) StructFieldWriterFunc {
+func makeFloat64Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*float64)(p)
@@ -177,7 +109,7 @@ func makeFloat64Writer(offset uintptr) StructFieldWriterFunc {
 
 //--------------------------------------------------------------------------
 
-func makeIntWriter(offset uintptr) StructFieldWriterFunc {
+func makeIntWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*int)(p)
@@ -185,7 +117,7 @@ func makeIntWriter(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeInt8Writer(offset uintptr) StructFieldWriterFunc {
+func makeInt8Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*int8)(p)
@@ -193,7 +125,7 @@ func makeInt8Writer(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeInt16Writer(offset uintptr) StructFieldWriterFunc {
+func makeInt16Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*int16)(p)
@@ -201,7 +133,7 @@ func makeInt16Writer(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeInt32Writer(offset uintptr) StructFieldWriterFunc {
+func makeInt32Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*int32)(p)
@@ -209,7 +141,7 @@ func makeInt32Writer(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeInt64Writer(offset uintptr) StructFieldWriterFunc {
+func makeInt64Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*int64)(p)
@@ -219,7 +151,7 @@ func makeInt64Writer(offset uintptr) StructFieldWriterFunc {
 
 //--------------------------------------------------------------------------
 
-func makeUintWriter(offset uintptr) StructFieldWriterFunc {
+func makeUintWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*uint)(p)
@@ -227,7 +159,7 @@ func makeUintWriter(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeUint8Writer(offset uintptr) StructFieldWriterFunc {
+func makeUint8Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*uint8)(p)
@@ -235,7 +167,7 @@ func makeUint8Writer(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeUint16Writer(offset uintptr) StructFieldWriterFunc {
+func makeUint16Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*uint16)(p)
@@ -243,7 +175,7 @@ func makeUint16Writer(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeUint32Writer(offset uintptr) StructFieldWriterFunc {
+func makeUint32Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*uint32)(p)
@@ -251,7 +183,7 @@ func makeUint32Writer(offset uintptr) StructFieldWriterFunc {
 	}
 }
 
-func makeUint64Writer(offset uintptr) StructFieldWriterFunc {
+func makeUint64Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*uint64)(p)

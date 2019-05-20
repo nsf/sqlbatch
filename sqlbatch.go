@@ -1,23 +1,26 @@
 package sqlbatch
 
 import (
+	"database/sql"
 	"github.com/codemodus/kace"
 	"github.com/lib/pq"
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 )
 
-type StructFieldGetterFunc func(structPtr unsafe.Pointer, ifacePtr *interface{})
-type StructFieldWriterFunc func(structPtr unsafe.Pointer, b *strings.Builder)
+type FieldInterface struct {
+	Get   func(structPtr unsafe.Pointer, ifacePtr *interface{})
+	Write func(structPtr unsafe.Pointer, b *strings.Builder)
+}
 
 type FieldInfo struct {
 	Name       string
 	QuotedName string
 	PrimaryKey bool
-	GetValue   StructFieldGetterFunc
-	WriteValue StructFieldWriterFunc
+	Interface  FieldInterface
 }
 
 type StructInfo struct {
@@ -40,10 +43,74 @@ type StructInfo struct {
 var structInfoCache = map[reflect.Type]*StructInfo{}
 var structInfoCacheLock sync.RWMutex
 
-var CustomStructFieldGetterFuncResolver StructFieldGetterFuncResolver
-var CustomStructFieldWriterFuncResolver StructFieldWriterFuncResolver
+type FieldInterfaceResolver func(t reflect.Type, offset uintptr) (FieldInterface, bool)
 
-func GetStructInfo(t reflect.Type, customGetter StructFieldGetterFuncResolver, customWriter StructFieldWriterFuncResolver) *StructInfo {
+var CustomFieldInterfaceResolver FieldInterfaceResolver
+
+func resolveCustomFieldInterface(t reflect.Type, offset uintptr, custom FieldInterfaceResolver) (FieldInterface, bool) {
+	if custom == nil {
+		return FieldInterface{}, false
+	} else {
+		return custom(t, offset)
+	}
+}
+
+func MakeFieldInterfaceForField(t reflect.StructField, offset uintptr, custom FieldInterfaceResolver) FieldInterface {
+	o := t.Offset + offset
+	switch t.Type.Kind() {
+	case reflect.Bool:
+		return FieldInterface{Get: makeBoolGetter(o), Write: makeBoolWriter(o)}
+	case reflect.Int:
+		return FieldInterface{Get: makeIntGetter(o), Write: makeIntWriter(o)}
+	case reflect.Int8:
+		return FieldInterface{Get: makeInt8Getter(o), Write: makeInt8Writer(o)}
+	case reflect.Int16:
+		return FieldInterface{Get: makeInt16Getter(o), Write: makeInt16Writer(o)}
+	case reflect.Int32:
+		return FieldInterface{Get: makeInt32Getter(o), Write: makeInt32Writer(o)}
+	case reflect.Int64:
+		return FieldInterface{Get: makeInt64Getter(o), Write: makeInt64Writer(o)}
+	case reflect.Uint:
+		return FieldInterface{Get: makeUintGetter(o), Write: makeUintWriter(o)}
+	case reflect.Uint8:
+		return FieldInterface{Get: makeUint8Getter(o), Write: makeUint8Writer(o)}
+	case reflect.Uint16:
+		return FieldInterface{Get: makeUint16Getter(o), Write: makeUint16Writer(o)}
+	case reflect.Uint32:
+		return FieldInterface{Get: makeUint32Getter(o), Write: makeUint32Writer(o)}
+	case reflect.Uint64:
+		return FieldInterface{Get: makeUint64Getter(o), Write: makeUint64Writer(o)}
+	case reflect.String:
+		return FieldInterface{Get: makeStringGetter(o), Write: makeStringWriter(o)}
+	case reflect.Float32:
+		return FieldInterface{Get: makeFloat32Getter(o), Write: makeFloat32Writer(o)}
+	case reflect.Float64:
+		return FieldInterface{Get: makeFloat64Getter(o), Write: makeFloat64Writer(o)}
+	case reflect.Slice:
+		if t.Type.Elem().Kind() == reflect.Uint8 { // byte slice
+			return FieldInterface{Get: makeByteSliceGetter(o), Write: makeByteSliceWriter(o)}
+		}
+	case reflect.Struct:
+		if iface, ok := resolveCustomFieldInterface(t.Type, o, custom); ok {
+			return iface
+		} else if t.Type == reflect.TypeOf(time.Time{}) {
+			return FieldInterface{Get: makeTimeGetter(o), Write: makeTimeWriter(o)}
+		} else if t.Type == reflect.TypeOf(sql.NullBool{}) {
+			return FieldInterface{Get: makeNullBoolGetter(o), Write: makeNullBoolWriter(o)}
+		} else if t.Type == reflect.TypeOf(sql.NullFloat64{}) {
+			return FieldInterface{Get: makeNullFloat64Getter(o), Write: makeNullFloat64Writer(o)}
+		} else if t.Type == reflect.TypeOf(sql.NullInt64{}) {
+			return FieldInterface{Get: makeNullInt64Getter(o), Write: makeNullInt64Writer(o)}
+		} else if t.Type == reflect.TypeOf(sql.NullString{}) {
+			return FieldInterface{Get: makeNullStringGetter(o), Write: makeNullStringWriter(o)}
+		} else if t.Type == reflect.TypeOf(pq.NullTime{}) {
+			return FieldInterface{Get: makeNullTimeGetter(o), Write: makeNullTimeWriter(o)}
+		}
+	}
+	panic("unsupported field type: " + t.Type.String())
+}
+
+func GetStructInfo(t reflect.Type, custom FieldInterfaceResolver) *StructInfo {
 	// quick path, let's try reading saved value
 	structInfoCacheLock.RLock()
 	v, ok := structInfoCache[t]
@@ -57,7 +124,7 @@ func GetStructInfo(t reflect.Type, customGetter StructFieldGetterFuncResolver, c
 	structInfoCacheLock.Lock()
 	defer structInfoCacheLock.Unlock()
 
-	info := ScanStruct(t, 0, customGetter, customWriter)
+	info := ScanStruct(t, 0, custom)
 	structInfoCache[t] = info
 	return info
 }
@@ -88,7 +155,7 @@ func parseTag(t string) (out tagInfo) {
 	return
 }
 
-func ScanStruct(t reflect.Type, offset uintptr, customGetter StructFieldGetterFuncResolver, customWriter StructFieldWriterFuncResolver) *StructInfo {
+func ScanStruct(t reflect.Type, offset uintptr, custom FieldInterfaceResolver) *StructInfo {
 	if t.Kind() != reflect.Struct {
 		panic("struct type expected")
 	}
@@ -113,7 +180,7 @@ func ScanStruct(t reflect.Type, offset uintptr, customGetter StructFieldGetterFu
 
 		if f.Anonymous {
 			// embedded field
-			for _, ef := range ScanStruct(f.Type, f.Offset, customGetter, customWriter).Fields {
+			for _, ef := range ScanStruct(f.Type, f.Offset, custom).Fields {
 				addFieldMaybe(ef)
 			}
 		} else {
@@ -137,8 +204,7 @@ func ScanStruct(t reflect.Type, offset uintptr, customGetter StructFieldGetterFu
 
 			field := FieldInfo{
 				Name:       kace.Snake(f.Name),
-				GetValue:   MakeStructFieldGetterFuncForField(f, offset, customGetter),
-				WriteValue: MakeStructFieldWriterFuncForField(f, offset, customWriter),
+				Interface:  MakeFieldInterfaceForField(f, offset, custom),
 				PrimaryKey: ti.primaryKey,
 			}
 			if ti.name != "" {
@@ -176,7 +242,7 @@ func (b *Batch) Insert(v interface{}) {
 	}
 
 	ptr := unsafe.Pointer(structVal.Pointer())
-	si := GetStructInfo(t, CustomStructFieldGetterFuncResolver, CustomStructFieldWriterFuncResolver)
+	si := GetStructInfo(t, CustomFieldInterfaceResolver)
 
 	sb := &b.stmtBuilder
 	if sb.Len() != 0 {
@@ -196,7 +262,7 @@ func (b *Batch) Insert(v interface{}) {
 		if i != 0 {
 			sb.WriteString(", ")
 		}
-		f.WriteValue(ptr, sb)
+		f.Interface.Write(ptr, sb)
 	}
 	sb.WriteString(") RETURNING NOTHING")
 }
