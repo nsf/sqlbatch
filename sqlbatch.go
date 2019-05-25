@@ -21,6 +21,7 @@ type FieldInfo struct {
 	QuotedName string
 	PrimaryKey bool
 	Interface  FieldInterface
+	Group      string
 }
 
 type StructInfo struct {
@@ -37,6 +38,8 @@ type StructInfo struct {
 	//   `db:"column:foo"`             - rename the column
 	//   `db:"primary_key"`            - assume column is a primary key
 	//   `db:"column:foo,primary_key"` - both (comma separated)
+	//   `db:"-"`                      - skip the field
+	//   `db:"group:bar"`              - for embedded structs, assign it to a group
 	Fields         []FieldInfo
 	PrimaryKeys    []*FieldInfo
 	NonPrimaryKeys []*FieldInfo
@@ -145,6 +148,7 @@ type tagInfo struct {
 	name       string
 	primaryKey bool
 	ignore     bool
+	group      string
 }
 
 func parseTag(t string) (out tagInfo) {
@@ -159,6 +163,10 @@ func parseTag(t string) (out tagInfo) {
 				if len(kv) > 1 {
 					out.name = kv[1]
 				}
+			case "group":
+				if len(kv) > 1 {
+					out.group = kv[1]
+				}
 			case "-":
 				out.ignore = true
 			}
@@ -167,7 +175,13 @@ func parseTag(t string) (out tagInfo) {
 	return
 }
 
-func ScanStruct(t reflect.Type, offset uintptr, custom FieldInterfaceResolver) *StructInfo {
+type scanStructCtx struct {
+	custom FieldInterfaceResolver
+	offset uintptr
+	group  string
+}
+
+func scanStructImpl(t reflect.Type, ctx *scanStructCtx) *StructInfo {
 	if t.Kind() != reflect.Struct {
 		panic("struct type expected")
 	}
@@ -190,34 +204,40 @@ func ScanStruct(t reflect.Type, offset uintptr, custom FieldInterfaceResolver) *
 			continue
 		}
 
+		var tagVal string
+		var ok bool
+		tagVal, ok = f.Tag.Lookup("db")
+		if !ok {
+			tagVal, ok = f.Tag.Lookup("sql")
+			if !ok {
+				tagVal, ok = f.Tag.Lookup("gorm")
+			}
+		}
+		var ti tagInfo
+		if ok {
+			ti = parseTag(tagVal)
+		}
+
 		if f.Anonymous {
 			// embedded field
-			for _, ef := range ScanStruct(f.Type, f.Offset, custom).Fields {
+			emCtx := &scanStructCtx{
+				custom: ctx.custom,
+				offset: ctx.offset + f.Offset,
+				group:  ti.group,
+			}
+			for _, ef := range scanStructImpl(f.Type, emCtx).Fields {
 				addFieldMaybe(ef)
 			}
 		} else {
-			var tagVal string
-			var ok bool
-			tagVal, ok = f.Tag.Lookup("db")
-			if !ok {
-				tagVal, ok = f.Tag.Lookup("sql")
-				if !ok {
-					tagVal, ok = f.Tag.Lookup("gorm")
-				}
-			}
-			var ti tagInfo
-			if ok {
-				ti = parseTag(tagVal)
-			}
-
 			if ti.ignore {
 				continue
 			}
 
 			field := FieldInfo{
 				Name:       kace.Snake(f.Name),
-				Interface:  MakeFieldInterfaceForField(f, offset, custom),
+				Interface:  MakeFieldInterfaceForField(f, ctx.offset, ctx.custom),
 				PrimaryKey: ti.primaryKey,
+				Group:      ctx.group,
 			}
 			if ti.name != "" {
 				field.Name = ti.name
@@ -234,6 +254,13 @@ func ScanStruct(t reflect.Type, offset uintptr, custom FieldInterfaceResolver) *
 		PrimaryKeys:    filterPrimaryKeys(fields, true),
 		NonPrimaryKeys: filterPrimaryKeys(fields, false),
 	}
+}
+
+func ScanStruct(t reflect.Type, offset uintptr, custom FieldInterfaceResolver) *StructInfo {
+	return scanStructImpl(t, &scanStructCtx{
+		offset: offset,
+		custom: custom,
+	})
 }
 
 type Batch struct {
@@ -261,37 +288,50 @@ func assertHasPrimaryKeys(si *StructInfo) {
 	}
 }
 
-func (b *Batch) Insert(v interface{}) {
+func writePrimaryKeysWhereCondition(si *StructInfo, ptr unsafe.Pointer, sb *strings.Builder) {
+	pkWriter := newListWriter(sb)
+	for _, f := range si.PrimaryKeys {
+		b := pkWriter.Next()
+		b.WriteString(f.QuotedName)
+		b.WriteString(" = ")
+		f.Interface.Write(ptr, b)
+	}
+	sb.WriteString(" RETURNING NOTHING")
+}
+
+func (b *Batch) beginNextStmt() *strings.Builder {
+	sb := &b.stmtBuilder
+	if sb.Len() != 0 {
+		sb.WriteString("; ")
+	}
+	return sb
+}
+
+func (b *Batch) Insert(v interface{}) *Batch {
 	structVal := reflect.ValueOf(v)
 	t := assertPointerToStruct(structVal.Type())
 
 	ptr := unsafe.Pointer(structVal.Pointer())
 	si := GetStructInfo(t, CustomFieldInterfaceResolver)
 
-	sb := &b.stmtBuilder
-	if sb.Len() != 0 {
-		sb.WriteString("; ")
-	}
+	sb := b.beginNextStmt()
 	sb.WriteString("INSERT INTO ")
 	sb.WriteString(si.QuotedName)
 	sb.WriteString(" (")
-	for i, f := range si.Fields {
-		if i != 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString(f.QuotedName)
+	fieldNamesWriter := newListWriter(sb)
+	for _, f := range si.Fields {
+		fieldNamesWriter.WriteString(f.QuotedName)
 	}
 	sb.WriteString(") VALUES (")
-	for i, f := range si.Fields {
-		if i != 0 {
-			sb.WriteString(", ")
-		}
-		f.Interface.Write(ptr, sb)
+	fieldValuesWriter := newListWriter(sb)
+	for _, f := range si.Fields {
+		f.Interface.Write(ptr, fieldValuesWriter.Next())
 	}
 	sb.WriteString(") RETURNING NOTHING")
+	return b
 }
 
-func (b *Batch) Update(v interface{}) {
+func (b *Batch) Update(v interface{}) *Batch {
 	structVal := reflect.ValueOf(v)
 	t := assertPointerToStruct(structVal.Type())
 
@@ -299,31 +339,36 @@ func (b *Batch) Update(v interface{}) {
 	si := GetStructInfo(t, CustomFieldInterfaceResolver)
 	assertHasPrimaryKeys(si)
 
-	sb := &b.stmtBuilder
-	if sb.Len() != 0 {
-		sb.WriteString("; ")
-	}
+	sb := b.beginNextStmt()
 	sb.WriteString("UPDATE ")
 	sb.WriteString(si.QuotedName)
 	sb.WriteString(" SET ")
-	for i, f := range si.NonPrimaryKeys {
-		if i != 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString(f.QuotedName)
-		sb.WriteString(" = ")
-		f.Interface.Write(ptr, sb)
+	valsWriter := newListWriter(sb)
+	for _, f := range si.NonPrimaryKeys {
+		b := valsWriter.Next()
+		b.WriteString(f.QuotedName)
+		b.WriteString(" = ")
+		f.Interface.Write(ptr, b)
 	}
 	sb.WriteString(" WHERE ")
-	for i, f := range si.PrimaryKeys {
-		if i != 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString(f.QuotedName)
-		sb.WriteString(" = ")
-		f.Interface.Write(ptr, sb)
-	}
-	sb.WriteString(" RETURNING NOTHING")
+	writePrimaryKeysWhereCondition(si, ptr, sb)
+	return b
+}
+
+func (b *Batch) Delete(v interface{}) *Batch {
+	structVal := reflect.ValueOf(v)
+	t := assertPointerToStruct(structVal.Type())
+
+	ptr := unsafe.Pointer(structVal.Pointer())
+	si := GetStructInfo(t, CustomFieldInterfaceResolver)
+	assertHasPrimaryKeys(si)
+
+	sb := b.beginNextStmt()
+	sb.WriteString("DELETE FROM ")
+	sb.WriteString(si.QuotedName)
+	sb.WriteString(" WHERE ")
+	writePrimaryKeysWhereCondition(si, ptr, sb)
+	return b
 }
 
 func (b *Batch) Query() string {

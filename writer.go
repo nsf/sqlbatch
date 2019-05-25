@@ -155,7 +155,7 @@ func makeUintWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Bu
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*uint)(p)
-		appendInt64(b, int64(val), false)
+		appendUint64(b, uint64(val), false)
 	}
 }
 
@@ -163,7 +163,7 @@ func makeUint8Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.B
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*uint8)(p)
-		appendInt64(b, int64(val), false)
+		appendUint64(b, uint64(val), false)
 	}
 }
 
@@ -171,7 +171,7 @@ func makeUint16Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*uint16)(p)
-		appendInt64(b, int64(val), false)
+		appendUint64(b, uint64(val), false)
 	}
 }
 
@@ -179,7 +179,7 @@ func makeUint32Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*uint32)(p)
-		appendInt64(b, int64(val), false)
+		appendUint64(b, uint64(val), false)
 	}
 }
 
@@ -187,7 +187,7 @@ func makeUint64Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*uint64)(p)
-		appendInt64(b, int64(val), false)
+		appendUint64(b, uint64(val), false)
 	}
 }
 
@@ -213,6 +213,15 @@ func appendInt64(b *strings.Builder, v int64, isNull bool) {
 	}
 }
 
+// uint64
+func appendUint64(b *strings.Builder, v uint64, isNull bool) {
+	if isNull {
+		b.WriteString("NULL")
+	} else {
+		b.WriteString(strconv.FormatUint(v, 10))
+	}
+}
+
 // float64
 func appendFloat64(b *strings.Builder, v float64, isNull bool) {
 	if isNull {
@@ -220,11 +229,11 @@ func appendFloat64(b *strings.Builder, v float64, isNull bool) {
 	} else {
 		switch {
 		case math.IsNaN(v):
-			b.WriteString("nan")
+			b.WriteString("'NaN'::FLOAT")
 		case math.IsInf(v, 1):
-			b.WriteString("inf")
+			b.WriteString("'Inf'::FLOAT")
 		case math.IsInf(v, -1):
-			b.WriteString("-inf")
+			b.WriteString("'-Inf'::FLOAT")
 		default:
 			b.WriteString(strconv.FormatFloat(v, 'f', -1, 64))
 		}
@@ -261,14 +270,13 @@ func appendString(b *strings.Builder, v string, isNull bool) {
 		b.WriteString("NULL")
 	} else {
 		b.WriteString(`'`)
-		for i := 0; i < len(v); i++ {
-			c := v[i]
-			if c == 0 { // zero bytes are not supported, skip it
+		for _, r := range v {
+			if r == 0 {
 				continue
-			} else if c == '\'' {
+			} else if r == '\'' {
 				b.WriteString(`''`)
 			} else {
-				b.WriteByte(c)
+				b.WriteRune(r)
 			}
 		}
 		b.WriteString(`'`)

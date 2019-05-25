@@ -1,14 +1,65 @@
 package sqlbatch
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"github.com/lib/pq"
+	"math"
 	"reflect"
 	"testing"
 	"time"
+	"unicode/utf8"
 	"unsafe"
 )
+
+func rfc3339ToTime(v string) time.Time {
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func rfc3339NanoToTime(v string) time.Time {
+	t, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func openTestDBConnection(t *testing.T) *sql.DB {
+	db, err := sql.Open("postgres", "host=127.0.0.1 port=26257 user=root dbname=test sslmode=disable binary_parameters=yes")
+	if err != nil {
+		t.Fatalf("db connection error: %s", err)
+	}
+	return db
+}
+
+func dbExec(t *testing.T, db *sql.DB, query string) {
+	_, err := db.Exec(query)
+	if err != nil {
+		t.Fatalf("db exec error: %s", err)
+	}
+}
+
+func dbScanSingleRow(t *testing.T, db *sql.DB, query string, vals ...interface{}) {
+	rows, err := db.Query(query)
+	if err != nil {
+		t.Errorf("select failure: %s", err)
+		return
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Errorf("zero rows")
+		return
+	}
+	if err := rows.Scan(vals...); err != nil {
+		t.Errorf("scan failure: %s", err)
+		return
+	}
+}
 
 func TestBatchInsert(t *testing.T) {
 	type FooBar struct {
@@ -26,13 +77,10 @@ func TestBatchInsert(t *testing.T) {
 	query := b.Query()
 	t.Log(query)
 
-	db, err := sql.Open("postgres", "host=127.0.0.1 port=26257 user=root dbname=test sslmode=disable binary_parameters=yes")
-	if err != nil {
-		t.Fatalf("db connection error: %s", err)
-	}
+	db := openTestDBConnection(t)
 	defer db.Close()
 
-	_, err = db.Exec(`
+	dbExec(t, db, `
 		DROP TABLE IF EXISTS "foo_bar";
 		CREATE TABLE foo_bar (
 			id INT NOT NULL,
@@ -42,25 +90,217 @@ func TestBatchInsert(t *testing.T) {
 			CONSTRAINT "primary" PRIMARY KEY (id ASC)
 		)
 	`)
-	if err != nil {
-		t.Fatalf("db exec error: %s", err)
+
+	dbExec(t, db, query)
+}
+
+func TestStringFormatting(t *testing.T) {
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "string_format";
+		CREATE TABLE "string_format" (
+			key INT NOT NULL,
+			value STRING NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (key ASC)
+		)
+	`)
+
+	type StringFormat struct {
+		Key   int64 `db:"primary_key"`
+		Value string
 	}
 
-	_, err = db.Exec(query)
-	if err != nil {
-		t.Fatalf("db exec error: %s", err)
+	for i := 0; i < 256; i++ {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			dbExec(t, db, New().Insert(&StringFormat{Key: 1, Value: string([]byte{byte(i)})}).Query())
+
+			var s string
+			dbScanSingleRow(t, db, "SELECT value FROM string_format WHERE key = 1", &s)
+			if !utf8.ValidString(s) {
+				t.Errorf("invalid string")
+			}
+
+			dbExec(t, db, New().Delete(&StringFormat{Key: 1}).Query())
+		})
 	}
 }
 
-func rfc3339ToTime(v string) time.Time {
-	t, err := time.Parse(time.RFC3339, v)
-	if err != nil {
-		panic(err)
+func TestBytesFormatting(t *testing.T) {
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "bytes_format";
+		CREATE TABLE "bytes_format" (
+			key INT NOT NULL,
+			value BYTES NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (key ASC)
+		)
+	`)
+
+	type BytesFormat struct {
+		Key   int64 `db:"primary_key"`
+		Value []byte
 	}
-	return t
+
+	for i := 0; i < 256; i++ {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			dbExec(t, db, New().Insert(&BytesFormat{Key: 1, Value: []byte{byte(i)}}).Query())
+
+			var b []byte
+			dbScanSingleRow(t, db, "SELECT value FROM bytes_format WHERE key = 1", &b)
+			if len(b) != 1 && bytes.Equal(b, []byte{byte(i)}) {
+				t.Errorf("invalid bytes")
+			}
+
+			dbExec(t, db, New().Delete(&BytesFormat{Key: 1}).Query())
+		})
+	}
+
+	t.Run("MultipleBytes", func(t *testing.T) {
+		dbExec(t, db, New().Insert(&BytesFormat{Key: 1, Value: []byte("проверка")}).Query())
+
+		var b []byte
+		dbScanSingleRow(t, db, "SELECT value FROM bytes_format WHERE key = 1", &b)
+		if string(b) != "проверка" {
+			t.Errorf("invalid bytes")
+		}
+
+		dbExec(t, db, New().Delete(&BytesFormat{Key: 1}).Query())
+	})
+}
+
+func TestMiscFormatting(t *testing.T) {
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "misc_format";
+		CREATE TABLE "misc_format" (
+			key INT NOT NULL,
+			f FLOAT8 NULL DEFAULT NULL,
+			i INT NULL DEFAULT NULL,
+			b BOOL NULL DEFAULT NULL,
+			t TIMESTAMP NULL DEFAULT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (key ASC)
+		)
+	`)
+	type MiscFormat struct {
+		Key int64 `db:"primary_key"`
+		F   sql.NullFloat64
+		I   sql.NullInt64
+		B   sql.NullBool
+		T   pq.NullTime
+	}
+
+	t.Run("Float64", func(t *testing.T) {
+		dbExec(t, db, New().
+			Insert(&MiscFormat{Key: 1, F: sql.NullFloat64{}}).
+			Insert(&MiscFormat{Key: 2, F: sql.NullFloat64{Valid: true, Float64: math.NaN()}}).
+			Insert(&MiscFormat{Key: 3, F: sql.NullFloat64{Valid: true, Float64: math.Inf(1)}}).
+			Insert(&MiscFormat{Key: 4, F: sql.NullFloat64{Valid: true, Float64: math.Inf(-1)}}).
+			Insert(&MiscFormat{Key: 5, F: sql.NullFloat64{Valid: true, Float64: 3.14159265358}}).
+			Query())
+
+		assertFloat64 := func(key int64, v sql.NullFloat64) {
+			var ret sql.NullFloat64
+			dbScanSingleRow(t, db, "SELECT f FROM misc_format WHERE key = "+fmt.Sprint(key), &ret)
+			if math.IsNaN(ret.Float64) && math.IsNaN(v.Float64) {
+				if ret.Valid != v.Valid {
+					t.Errorf("value mismatch: %v vs %v", ret, v)
+				}
+			} else if ret != v {
+				t.Errorf("value mismatch: %v vs %v", ret, v)
+			}
+		}
+		assertFloat64(1, sql.NullFloat64{})
+		assertFloat64(2, sql.NullFloat64{Valid: true, Float64: math.NaN()})
+		assertFloat64(3, sql.NullFloat64{Valid: true, Float64: math.Inf(1)})
+		assertFloat64(4, sql.NullFloat64{Valid: true, Float64: math.Inf(-1)})
+		assertFloat64(5, sql.NullFloat64{Valid: true, Float64: 3.14159265358})
+		dbExec(t, db, `DELETE FROM misc_format`)
+	})
+
+	t.Run("Int64", func(t *testing.T) {
+		dbExec(t, db, New().
+			Insert(&MiscFormat{Key: 1, I: sql.NullInt64{}}).
+			Insert(&MiscFormat{Key: 2, I: sql.NullInt64{Valid: true, Int64: 0}}).
+			Insert(&MiscFormat{Key: 3, I: sql.NullInt64{Valid: true, Int64: math.MinInt64}}).
+			Insert(&MiscFormat{Key: 4, I: sql.NullInt64{Valid: true, Int64: math.MaxInt64}}).
+			Insert(&MiscFormat{Key: 5, I: sql.NullInt64{Valid: true, Int64: 63463}}).
+			Query())
+
+		assertInt64 := func(key int64, v sql.NullInt64) {
+			var ret sql.NullInt64
+			dbScanSingleRow(t, db, "SELECT i FROM misc_format WHERE key = "+fmt.Sprint(key), &ret)
+			if ret != v {
+				t.Errorf("value mismatch: %v vs %v", ret, v)
+			}
+		}
+		assertInt64(1, sql.NullInt64{})
+		assertInt64(2, sql.NullInt64{Valid: true, Int64: 0})
+		assertInt64(3, sql.NullInt64{Valid: true, Int64: math.MinInt64})
+		assertInt64(4, sql.NullInt64{Valid: true, Int64: math.MaxInt64})
+		assertInt64(5, sql.NullInt64{Valid: true, Int64: 63463})
+		dbExec(t, db, `DELETE FROM misc_format`)
+	})
+
+	t.Run("Bool", func(t *testing.T) {
+		dbExec(t, db, New().
+			Insert(&MiscFormat{Key: 1, B: sql.NullBool{}}).
+			Insert(&MiscFormat{Key: 2, B: sql.NullBool{Valid: true, Bool: true}}).
+			Insert(&MiscFormat{Key: 3, B: sql.NullBool{Valid: true, Bool: false}}).
+			Query())
+
+		assertBool := func(key int64, v sql.NullBool) {
+			var ret sql.NullBool
+			dbScanSingleRow(t, db, "SELECT b FROM misc_format WHERE key = "+fmt.Sprint(key), &ret)
+			if ret != v {
+				t.Errorf("value mismatch: %v vs %v", ret, v)
+			}
+		}
+		assertBool(1, sql.NullBool{})
+		assertBool(2, sql.NullBool{Valid: true, Bool: true})
+		assertBool(3, sql.NullBool{Valid: true, Bool: false})
+		dbExec(t, db, `DELETE FROM misc_format`)
+	})
+
+	t.Run("Time", func(t *testing.T) {
+		dbExec(t, db, New().
+			Insert(&MiscFormat{Key: 1, T: pq.NullTime{}}).
+			Insert(&MiscFormat{Key: 2, T: pq.NullTime{Valid: true, Time: rfc3339ToTime("2015-06-02T02:00:56Z")}}).
+			Insert(&MiscFormat{Key: 3, T: pq.NullTime{Valid: true, Time: rfc3339ToTime("1996-12-19T16:39:57-08:00")}}).
+			Insert(&MiscFormat{Key: 4, T: pq.NullTime{Valid: true, Time: rfc3339NanoToTime("2006-01-02T15:04:05.123456789Z")}}).
+			Query())
+
+		assertTime := func(key int64, v pq.NullTime) {
+			var ret pq.NullTime
+			dbScanSingleRow(t, db, "SELECT t FROM misc_format WHERE key = "+fmt.Sprint(key), &ret)
+			if ret.Valid != v.Valid {
+				t.Errorf("value mismatch: %v vs %v", ret, v)
+			}
+			if ret.Time.UTC() != v.Time.UTC() {
+				t.Errorf("value mismatch: %v vs %v", ret, v)
+			}
+		}
+		assertTime(1, pq.NullTime{})
+		assertTime(2, pq.NullTime{Valid: true, Time: rfc3339ToTime("2015-06-02T02:00:56Z")})
+		assertTime(3, pq.NullTime{Valid: true, Time: rfc3339ToTime("1996-12-19T16:39:57-08:00")})
+		// note that cockroachdb offers precision only up to microseconds, while Go can do nano with time.Time
+		assertTime(4, pq.NullTime{Valid: true, Time: rfc3339NanoToTime("2006-01-02T15:04:05.123456000Z")})
+		dbExec(t, db, `DELETE FROM misc_format`)
+	})
+
 }
 
 func TestGetStructInfo(t *testing.T) {
+	type GroupFoo struct {
+		GFoo int
+		GBar int
+	}
+
 	type CommonStruct struct {
 		FieldA string
 		FieldB string
@@ -88,6 +328,8 @@ func TestGetStructInfo(t *testing.T) {
 		E21    sql.NullString
 		Foo    float32
 		Bar    float32
+		SomeA  int `db:"-"`
+		SomeB  int `db:"-"`
 	}
 
 	type FooBar struct {
@@ -115,6 +357,7 @@ func TestGetStructInfo(t *testing.T) {
 		F20 sql.NullInt64
 		F21 sql.NullString
 		CommonStruct
+		GroupFoo `db:"group:foo"`
 	}
 
 	v := &FooBar{
@@ -167,11 +410,15 @@ func TestGetStructInfo(t *testing.T) {
 			E20:    sql.NullInt64{Valid: true, Int64: 31337},
 			E21:    sql.NullString{Valid: true, String: "hax0r"},
 		},
+		GroupFoo: GroupFoo{
+			GFoo: 123,
+			GBar: 321,
+		},
 	}
 	ptr := unsafe.Pointer(v)
 	si := GetStructInfo(reflect.TypeOf(v).Elem(), nil)
 
-	assertField := func(idx *int, fs []FieldInfo, name string, val interface{}, primaryKey bool) {
+	assertField := func(idx *int, fs []FieldInfo, name string, val interface{}, primaryKey bool, customMatchers ...func(t *testing.T, f FieldInfo)) {
 		f := fs[*idx]
 		*idx++
 		if f.Name != name {
@@ -186,6 +433,17 @@ func TestGetStructInfo(t *testing.T) {
 
 		if f.PrimaryKey != primaryKey {
 			t.Errorf("field %q primary key mismatch: %v != %v", f.Name, f.PrimaryKey, primaryKey)
+		}
+		for _, m := range customMatchers {
+			m(t, f)
+		}
+	}
+
+	isOfGroup := func(group string) func(t *testing.T, f FieldInfo) {
+		return func(t *testing.T, f FieldInfo) {
+			if f.Group != group {
+				t.Errorf("field %q group mismatch: %q != %q", f.Name, f.Group, group)
+			}
 		}
 	}
 
@@ -245,7 +503,10 @@ func TestGetStructInfo(t *testing.T) {
 	assertField(&idx, si.Fields, "e20", sql.NullInt64{Valid: true, Int64: 31337}, false)
 	assertField(&idx, si.Fields, "e21", sql.NullString{Valid: true, String: "hax0r"}, false)
 
-	assertField(&idx, si.Fields, "foo", float32(0), false)
+	assertField(&idx, si.Fields, "foo", float32(0), false, isOfGroup(""))
+
+	assertField(&idx, si.Fields, "g_foo", int(123), false, isOfGroup("foo"))
+	assertField(&idx, si.Fields, "g_bar", int(321), false, isOfGroup("foo"))
 
 	if len(si.Fields) != idx {
 		t.Errorf("expected %d fields (one ignored), got: %d", idx, len(si.Fields))
@@ -262,6 +523,7 @@ func TestTagParse(t *testing.T) {
 		{"foo", tagInfo{}},
 		{"-", tagInfo{ignore: true}},
 		{"column:foo", tagInfo{name: "foo"}},
+		{"group:bar", tagInfo{group: "bar"}},
 		{"column:foo,primary_key", tagInfo{name: "foo", primaryKey: true}},
 		{"primary_key,column:foo", tagInfo{name: "foo", primaryKey: true}},
 		{"primary_key,column:foo,-", tagInfo{name: "foo", primaryKey: true, ignore: true}},
