@@ -431,8 +431,8 @@ func TestGetStructInfo(t *testing.T) {
 			t.Errorf("field %q value mismatch: %v != %v", f.Name, fval, val)
 		}
 
-		if f.PrimaryKey != primaryKey {
-			t.Errorf("field %q primary key mismatch: %v != %v", f.Name, f.PrimaryKey, primaryKey)
+		if f.IsPrimaryKey() != primaryKey {
+			t.Errorf("field %q primary key mismatch: %v != %v", f.Name, f.IsPrimaryKey(), primaryKey)
 		}
 		for _, m := range customMatchers {
 			m(t, f)
@@ -511,6 +511,45 @@ func TestGetStructInfo(t *testing.T) {
 	if len(si.Fields) != idx {
 		t.Errorf("expected %d fields (one ignored), got: %d", idx, len(si.Fields))
 	}
+}
+
+func assertStringEquals(t *testing.T, v, expected string) {
+	if v != expected {
+		t.Errorf("string values mismatch:\ngot:\n%s\nexpected:\n%s", v, expected)
+	}
+}
+
+func TestCreatedUpdated(t *testing.T) {
+	type CreatedUpdated struct {
+		ID        int64     `db:"primary_key"`
+		CreatedAt time.Time `db:"created"`
+		UpdatedAt time.Time `db:"updated"`
+	}
+
+	TimeNowFunc = func() time.Time { return rfc3339ToTime("2012-12-12T12:12:12Z") }
+	b1 := New()
+	b1.Insert(&CreatedUpdated{ID: 1})
+	assertStringEquals(t, b1.Query(),
+		`INSERT INTO "created_updated" ("id", "created_at", "updated_at") VALUES (1, TIMESTAMP '2012-12-12 12:12:12', TIMESTAMP '2012-12-12 12:12:12') RETURNING NOTHING`)
+	b2 := New()
+	b2.Update(&CreatedUpdated{ID: 1})
+	assertStringEquals(t, b2.Query(),
+		`UPDATE "created_updated" SET "created_at" = TIMESTAMP '0001-01-01 00:00:00', "updated_at" = TIMESTAMP '2012-12-12 12:12:12' WHERE "id" = 1 RETURNING NOTHING`)
+}
+
+func TestBulkInsert(t *testing.T) {
+	type TestStruct struct {
+		ID int64 `db:"primary_key"`
+		A  int
+		B  int
+	}
+	b := New()
+	b.WithBulkInserter(func(bulk *BulkInserter) {
+		for i := 0; i < 3; i++ {
+			bulk.Add(&TestStruct{ID: int64(i), A: i, B: i})
+		}
+	})
+	assertStringEquals(t, b.Query(), `INSERT INTO "test_struct" ("id", "a", "b") VALUES (0, 0, 0), (1, 1, 1), (2, 2, 2)`)
 }
 
 func TestTagParse(t *testing.T) {

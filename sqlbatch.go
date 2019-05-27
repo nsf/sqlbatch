@@ -13,16 +13,32 @@ import (
 
 type FieldInterface struct {
 	Get   func(structPtr unsafe.Pointer, ifacePtr *interface{})
+	Set   func(structPtr unsafe.Pointer, iface interface{})
 	Write func(structPtr unsafe.Pointer, b *strings.Builder)
 }
 
+type FieldInfoFlag uint32
+
+const (
+	FieldInfoIsCreated FieldInfoFlag = 1 << iota
+	FieldInfoIsUpdated
+	FieldInfoIsPrimaryKey
+	FieldInfoIsNull
+)
+
 type FieldInfo struct {
+	flags      FieldInfoFlag
 	Name       string
 	QuotedName string
-	PrimaryKey bool
 	Interface  FieldInterface
 	Group      string
+	Type       reflect.Type
 }
+
+func (f *FieldInfo) IsPrimaryKey() bool { return f.flags&FieldInfoIsPrimaryKey != 0 }
+func (f *FieldInfo) IsCreated() bool    { return f.flags&FieldInfoIsCreated != 0 }
+func (f *FieldInfo) IsUpdated() bool    { return f.flags&FieldInfoIsUpdated != 0 }
+func (f *FieldInfo) IsNull() bool       { return f.flags&FieldInfoIsNull != 0 }
 
 type StructInfo struct {
 	// name of the struct is converted to snake case
@@ -40,6 +56,9 @@ type StructInfo struct {
 	//   `db:"column:foo,primary_key"` - both (comma separated)
 	//   `db:"-"`                      - skip the field
 	//   `db:"group:bar"`              - for embedded structs, assign it to a group
+	//   `db:"created"`                - must be time.Time or pq.NullTime, value assigned on Insert()
+	//   `db:"updated"`                - must be time.Time or pq.NullTime, value assigned on Update()
+
 	Fields         []FieldInfo
 	PrimaryKeys    []*FieldInfo
 	NonPrimaryKeys []*FieldInfo
@@ -48,7 +67,7 @@ type StructInfo struct {
 func filterPrimaryKeys(fields []FieldInfo, v bool) []*FieldInfo {
 	var out []*FieldInfo
 	for i := range fields {
-		if fields[i].PrimaryKey == v {
+		if fields[i].IsPrimaryKey() == v {
 			out = append(out, &fields[i])
 		}
 	}
@@ -61,6 +80,7 @@ var structInfoCacheLock sync.RWMutex
 type FieldInterfaceResolver func(t reflect.Type, offset uintptr) (FieldInterface, bool)
 
 var CustomFieldInterfaceResolver FieldInterfaceResolver
+var TimeNowFunc = time.Now
 
 func resolveCustomFieldInterface(t reflect.Type, offset uintptr, custom FieldInterfaceResolver) (FieldInterface, bool) {
 	if custom == nil {
@@ -74,52 +94,136 @@ func MakeFieldInterfaceForField(t reflect.StructField, offset uintptr, custom Fi
 	o := t.Offset + offset
 	switch t.Type.Kind() {
 	case reflect.Bool:
-		return FieldInterface{Get: makeBoolGetter(o), Write: makeBoolWriter(o)}
+		return FieldInterface{
+			Set:   makeBoolSetter(o),
+			Get:   makeBoolGetter(o),
+			Write: makeBoolWriter(o),
+		}
 	case reflect.Int:
-		return FieldInterface{Get: makeIntGetter(o), Write: makeIntWriter(o)}
+		return FieldInterface{
+			Set:   makeIntSetter(o),
+			Get:   makeIntGetter(o),
+			Write: makeIntWriter(o),
+		}
 	case reflect.Int8:
-		return FieldInterface{Get: makeInt8Getter(o), Write: makeInt8Writer(o)}
+		return FieldInterface{
+			Set:   makeInt8Setter(o),
+			Get:   makeInt8Getter(o),
+			Write: makeInt8Writer(o),
+		}
 	case reflect.Int16:
-		return FieldInterface{Get: makeInt16Getter(o), Write: makeInt16Writer(o)}
+		return FieldInterface{
+			Set:   makeInt16Setter(o),
+			Get:   makeInt16Getter(o),
+			Write: makeInt16Writer(o),
+		}
 	case reflect.Int32:
-		return FieldInterface{Get: makeInt32Getter(o), Write: makeInt32Writer(o)}
+		return FieldInterface{
+			Set:   makeInt32Setter(o),
+			Get:   makeInt32Getter(o),
+			Write: makeInt32Writer(o),
+		}
 	case reflect.Int64:
-		return FieldInterface{Get: makeInt64Getter(o), Write: makeInt64Writer(o)}
+		return FieldInterface{
+			Set:   makeInt64Setter(o),
+			Get:   makeInt64Getter(o),
+			Write: makeInt64Writer(o),
+		}
 	case reflect.Uint:
-		return FieldInterface{Get: makeUintGetter(o), Write: makeUintWriter(o)}
+		return FieldInterface{
+			Set:   makeUintSetter(o),
+			Get:   makeUintGetter(o),
+			Write: makeUintWriter(o),
+		}
 	case reflect.Uint8:
-		return FieldInterface{Get: makeUint8Getter(o), Write: makeUint8Writer(o)}
+		return FieldInterface{
+			Set:   makeUint8Setter(o),
+			Get:   makeUint8Getter(o),
+			Write: makeUint8Writer(o),
+		}
 	case reflect.Uint16:
-		return FieldInterface{Get: makeUint16Getter(o), Write: makeUint16Writer(o)}
+		return FieldInterface{
+			Set:   makeUint16Setter(o),
+			Get:   makeUint16Getter(o),
+			Write: makeUint16Writer(o),
+		}
 	case reflect.Uint32:
-		return FieldInterface{Get: makeUint32Getter(o), Write: makeUint32Writer(o)}
+		return FieldInterface{
+			Set:   makeUint32Setter(o),
+			Get:   makeUint32Getter(o),
+			Write: makeUint32Writer(o),
+		}
 	case reflect.Uint64:
-		return FieldInterface{Get: makeUint64Getter(o), Write: makeUint64Writer(o)}
+		return FieldInterface{
+			Set:   makeUint64Setter(o),
+			Get:   makeUint64Getter(o),
+			Write: makeUint64Writer(o),
+		}
 	case reflect.String:
-		return FieldInterface{Get: makeStringGetter(o), Write: makeStringWriter(o)}
+		return FieldInterface{
+			Set:   makeStringSetter(o),
+			Get:   makeStringGetter(o),
+			Write: makeStringWriter(o),
+		}
 	case reflect.Float32:
-		return FieldInterface{Get: makeFloat32Getter(o), Write: makeFloat32Writer(o)}
+		return FieldInterface{
+			Set:   makeFloat32Setter(o),
+			Get:   makeFloat32Getter(o),
+			Write: makeFloat32Writer(o),
+		}
 	case reflect.Float64:
-		return FieldInterface{Get: makeFloat64Getter(o), Write: makeFloat64Writer(o)}
+		return FieldInterface{
+			Set:   makeFloat64Setter(o),
+			Get:   makeFloat64Getter(o),
+			Write: makeFloat64Writer(o),
+		}
 	case reflect.Slice:
 		if t.Type.Elem().Kind() == reflect.Uint8 { // byte slice
-			return FieldInterface{Get: makeByteSliceGetter(o), Write: makeByteSliceWriter(o)}
+			return FieldInterface{
+				Set:   makeByteSliceSetter(o),
+				Get:   makeByteSliceGetter(o),
+				Write: makeByteSliceWriter(o),
+			}
 		}
 	case reflect.Struct:
 		if iface, ok := resolveCustomFieldInterface(t.Type, o, custom); ok {
 			return iface
 		} else if t.Type == reflect.TypeOf(time.Time{}) {
-			return FieldInterface{Get: makeTimeGetter(o), Write: makeTimeWriter(o)}
+			return FieldInterface{
+				Set:   makeTimeSetter(o),
+				Get:   makeTimeGetter(o),
+				Write: makeTimeWriter(o),
+			}
 		} else if t.Type == reflect.TypeOf(sql.NullBool{}) {
-			return FieldInterface{Get: makeNullBoolGetter(o), Write: makeNullBoolWriter(o)}
+			return FieldInterface{
+				Set:   makeNullBoolSetter(o),
+				Get:   makeNullBoolGetter(o),
+				Write: makeNullBoolWriter(o),
+			}
 		} else if t.Type == reflect.TypeOf(sql.NullFloat64{}) {
-			return FieldInterface{Get: makeNullFloat64Getter(o), Write: makeNullFloat64Writer(o)}
+			return FieldInterface{
+				Set:   makeNullFloat64Setter(o),
+				Get:   makeNullFloat64Getter(o),
+				Write: makeNullFloat64Writer(o),
+			}
 		} else if t.Type == reflect.TypeOf(sql.NullInt64{}) {
-			return FieldInterface{Get: makeNullInt64Getter(o), Write: makeNullInt64Writer(o)}
+			return FieldInterface{
+				Set:   makeNullInt64Setter(o),
+				Get:   makeNullInt64Getter(o),
+				Write: makeNullInt64Writer(o),
+			}
 		} else if t.Type == reflect.TypeOf(sql.NullString{}) {
-			return FieldInterface{Get: makeNullStringGetter(o), Write: makeNullStringWriter(o)}
+			return FieldInterface{
+				Set:   makeNullStringSetter(o),
+				Get:   makeNullStringGetter(o),
+				Write: makeNullStringWriter(o),
+			}
 		} else if t.Type == reflect.TypeOf(pq.NullTime{}) {
-			return FieldInterface{Get: makeNullTimeGetter(o), Write: makeNullTimeWriter(o)}
+			return FieldInterface{
+				Set:   makeNullTimeSetter(o),
+				Get:   makeNullTimeGetter(o),
+				Write: makeNullTimeWriter(o),
+			}
 		}
 	}
 	panic("unsupported field type: " + t.Type.String())
@@ -149,6 +253,8 @@ type tagInfo struct {
 	primaryKey bool
 	ignore     bool
 	group      string
+	isCreated  bool
+	isUpdated  bool
 }
 
 func parseTag(t string) (out tagInfo) {
@@ -169,10 +275,35 @@ func parseTag(t string) (out tagInfo) {
 				}
 			case "-":
 				out.ignore = true
+			case "created":
+				out.isCreated = true
+			case "updated":
+				out.isUpdated = true
 			}
 		}
 	}
 	return
+}
+
+func assertTypeIsTime(t reflect.Type) {
+	timeType := reflect.TypeOf(time.Time{})
+	nullTimeType := reflect.TypeOf(pq.NullTime{})
+	if t != timeType && t != nullTimeType {
+		panic("time.Time or pq.NullTime expected")
+	}
+}
+
+func isTypeNull(t reflect.Type) bool {
+	switch {
+	case t == reflect.TypeOf(sql.NullBool{}),
+		t == reflect.TypeOf(sql.NullFloat64{}),
+		t == reflect.TypeOf(sql.NullInt64{}),
+		t == reflect.TypeOf(sql.NullString{}),
+		t == reflect.TypeOf(pq.NullTime{}):
+		return true
+	default:
+		return false
+	}
 }
 
 type scanStructCtx struct {
@@ -233,11 +364,30 @@ func scanStructImpl(t reflect.Type, ctx *scanStructCtx) *StructInfo {
 				continue
 			}
 
+			if ti.isCreated || ti.isUpdated {
+				assertTypeIsTime(f.Type)
+			}
+
+			flags := FieldInfoFlag(0)
+			if ti.primaryKey {
+				flags |= FieldInfoIsPrimaryKey
+			}
+			if ti.isCreated {
+				flags |= FieldInfoIsCreated
+			}
+			if ti.isUpdated {
+				flags |= FieldInfoIsUpdated
+			}
+			if isTypeNull(f.Type) {
+				flags |= FieldInfoIsNull
+			}
+
 			field := FieldInfo{
-				Name:       kace.Snake(f.Name),
-				Interface:  MakeFieldInterfaceForField(f, ctx.offset, ctx.custom),
-				PrimaryKey: ti.primaryKey,
-				Group:      ctx.group,
+				flags:     flags,
+				Name:      kace.Snake(f.Name),
+				Interface: MakeFieldInterfaceForField(f, ctx.offset, ctx.custom),
+				Group:     ctx.group,
+				Type:      f.Type,
 			}
 			if ti.name != "" {
 				field.Name = ti.name
@@ -264,11 +414,14 @@ func ScanStruct(t reflect.Type, offset uintptr, custom FieldInterfaceResolver) *
 }
 
 type Batch struct {
-	stmtBuilder strings.Builder
+	stmtBuilder       strings.Builder
+	liveBulkFunctions map[int]struct{}
+	nextBulkID        int
+	now               time.Time
 }
 
 func New() *Batch {
-	return &Batch{}
+	return &Batch{now: TimeNowFunc()}
 }
 
 func assertPointerToStruct(t reflect.Type) reflect.Type {
@@ -299,12 +452,98 @@ func writePrimaryKeysWhereCondition(si *StructInfo, ptr unsafe.Pointer, sb *stri
 	sb.WriteString(" RETURNING NOTHING")
 }
 
+func writeFieldValues(si *StructInfo, ptr unsafe.Pointer, sb *strings.Builder, now time.Time) {
+	fieldValuesWriter := newListWriter(sb)
+	for _, f := range si.Fields {
+		if f.IsCreated() || f.IsUpdated() {
+			setTime(&f, ptr, now)
+		}
+		f.Interface.Write(ptr, fieldValuesWriter.Next())
+	}
+}
+
+func setTime(f *FieldInfo, ptr unsafe.Pointer, t time.Time) {
+	if f.IsNull() {
+		f.Interface.Set(ptr, pq.NullTime{Valid: true, Time: t})
+	} else {
+		f.Interface.Set(ptr, t)
+	}
+}
+
 func (b *Batch) beginNextStmt() *strings.Builder {
 	sb := &b.stmtBuilder
 	if sb.Len() != 0 {
 		sb.WriteString("; ")
 	}
 	return sb
+}
+
+type BulkInserter struct {
+	id      int
+	b       *Batch
+	builder strings.Builder
+	si      *StructInfo
+}
+
+func (b *BulkInserter) Add(v interface{}) *BulkInserter {
+	if b.id == -1 {
+		panic("BulkInserter already committed")
+	}
+
+	structVal := reflect.ValueOf(v)
+	t := assertPointerToStruct(structVal.Type())
+
+	ptr := unsafe.Pointer(structVal.Pointer())
+	si := GetStructInfo(t, CustomFieldInterfaceResolver)
+
+	if b.si != nil && b.si != si {
+		panic("mismatching struct type on subsequent BulkInserter.Insert() calls")
+	}
+
+	sb := &b.builder
+	if b.si == nil {
+		b.si = si
+		// first call, start bulk insert statement
+		sb.WriteString("INSERT INTO ")
+		sb.WriteString(si.QuotedName)
+		sb.WriteString(" (")
+		fieldNamesWriter := newListWriter(sb)
+		for _, f := range si.Fields {
+			fieldNamesWriter.WriteString(f.QuotedName)
+		}
+		sb.WriteString(") VALUES ")
+	} else {
+		sb.WriteString(", ")
+	}
+
+	sb.WriteString("(")
+	writeFieldValues(si, ptr, sb, b.b.now)
+	sb.WriteString(")")
+	return b
+}
+
+func (b *BulkInserter) Commit() {
+	sb := b.b.beginNextStmt()
+	sb.WriteString(b.builder.String())
+	delete(b.b.liveBulkFunctions, b.id)
+	b.id = -1
+}
+
+func (b *Batch) BulkInserter() *BulkInserter {
+	id := b.nextBulkID
+	b.nextBulkID++
+	if b.liveBulkFunctions == nil {
+		b.liveBulkFunctions = map[int]struct{}{}
+	}
+	b.liveBulkFunctions[id] = struct{}{}
+	return &BulkInserter{b: b, id: id}
+}
+
+func (b *Batch) WithBulkInserter(cb func(bulk *BulkInserter)) *Batch {
+	bulk := b.BulkInserter()
+	cb(bulk)
+	bulk.Commit()
+	return b
 }
 
 func (b *Batch) Insert(v interface{}) *Batch {
@@ -323,10 +562,7 @@ func (b *Batch) Insert(v interface{}) *Batch {
 		fieldNamesWriter.WriteString(f.QuotedName)
 	}
 	sb.WriteString(") VALUES (")
-	fieldValuesWriter := newListWriter(sb)
-	for _, f := range si.Fields {
-		f.Interface.Write(ptr, fieldValuesWriter.Next())
-	}
+	writeFieldValues(si, ptr, sb, b.now)
 	sb.WriteString(") RETURNING NOTHING")
 	return b
 }
@@ -345,6 +581,9 @@ func (b *Batch) Update(v interface{}) *Batch {
 	sb.WriteString(" SET ")
 	valsWriter := newListWriter(sb)
 	for _, f := range si.NonPrimaryKeys {
+		if f.IsUpdated() {
+			setTime(f, ptr, b.now)
+		}
 		b := valsWriter.Next()
 		b.WriteString(f.QuotedName)
 		b.WriteString(" = ")
