@@ -42,6 +42,9 @@ func filterPrimaryKeys(fields []FieldInfo, v bool) []*FieldInfo {
 	return out
 }
 
+var typeInfoCache = map[reflect.Type]*FieldInterface{}
+var typeInfoCacheLock sync.RWMutex
+
 var structInfoCache = map[reflect.Type]*StructInfo{}
 var structInfoCacheLock sync.RWMutex
 
@@ -55,143 +58,186 @@ func resolveCustomFieldInterface(t reflect.Type, offset uintptr, custom FieldInt
 	}
 }
 
-func MakeFieldInterfaceForField(t reflect.StructField, offset uintptr, custom FieldInterfaceResolver) FieldInterface {
-	o := t.Offset + offset
-	switch t.Type.Kind() {
+func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolver) FieldInterface {
+	switch t.Kind() {
 	case reflect.Bool:
 		return FieldInterface{
 			Set:   makeBoolSetter(o),
 			Get:   makeBoolGetter(o),
 			Write: makeBoolWriter(o),
+			Conv:  boolConverter,
 		}
 	case reflect.Int:
 		return FieldInterface{
 			Set:   makeIntSetter(o),
 			Get:   makeIntGetter(o),
 			Write: makeIntWriter(o),
+			Conv:  intConverter,
 		}
 	case reflect.Int8:
 		return FieldInterface{
 			Set:   makeInt8Setter(o),
 			Get:   makeInt8Getter(o),
 			Write: makeInt8Writer(o),
+			Conv:  int8Converter,
 		}
 	case reflect.Int16:
 		return FieldInterface{
 			Set:   makeInt16Setter(o),
 			Get:   makeInt16Getter(o),
 			Write: makeInt16Writer(o),
+			Conv:  int16Converter,
 		}
 	case reflect.Int32:
 		return FieldInterface{
 			Set:   makeInt32Setter(o),
 			Get:   makeInt32Getter(o),
 			Write: makeInt32Writer(o),
+			Conv:  int32Converter,
 		}
 	case reflect.Int64:
 		return FieldInterface{
 			Set:   makeInt64Setter(o),
 			Get:   makeInt64Getter(o),
 			Write: makeInt64Writer(o),
+			Conv:  int64Converter,
 		}
 	case reflect.Uint:
 		return FieldInterface{
 			Set:   makeUintSetter(o),
 			Get:   makeUintGetter(o),
 			Write: makeUintWriter(o),
+			Conv:  uintConverter,
 		}
 	case reflect.Uint8:
 		return FieldInterface{
 			Set:   makeUint8Setter(o),
 			Get:   makeUint8Getter(o),
 			Write: makeUint8Writer(o),
+			Conv:  uint8Converter,
 		}
 	case reflect.Uint16:
 		return FieldInterface{
 			Set:   makeUint16Setter(o),
 			Get:   makeUint16Getter(o),
 			Write: makeUint16Writer(o),
+			Conv:  uint16Converter,
 		}
 	case reflect.Uint32:
 		return FieldInterface{
 			Set:   makeUint32Setter(o),
 			Get:   makeUint32Getter(o),
 			Write: makeUint32Writer(o),
+			Conv:  uint32Converter,
 		}
 	case reflect.Uint64:
 		return FieldInterface{
 			Set:   makeUint64Setter(o),
 			Get:   makeUint64Getter(o),
 			Write: makeUint64Writer(o),
+			Conv:  uint64Converter,
 		}
 	case reflect.String:
 		return FieldInterface{
 			Set:   makeStringSetter(o),
 			Get:   makeStringGetter(o),
 			Write: makeStringWriter(o),
+			Conv:  stringConverter,
 		}
 	case reflect.Float32:
 		return FieldInterface{
 			Set:   makeFloat32Setter(o),
 			Get:   makeFloat32Getter(o),
 			Write: makeFloat32Writer(o),
+			Conv:  float32Converter,
 		}
 	case reflect.Float64:
 		return FieldInterface{
 			Set:   makeFloat64Setter(o),
 			Get:   makeFloat64Getter(o),
 			Write: makeFloat64Writer(o),
+			Conv:  float64Converter,
 		}
 	case reflect.Slice:
-		if t.Type.Elem().Kind() == reflect.Uint8 { // byte slice
+		if t.Elem().Kind() == reflect.Uint8 { // byte slice
 			return FieldInterface{
 				Set:   makeByteSliceSetter(o),
 				Get:   makeByteSliceGetter(o),
 				Write: makeByteSliceWriter(o),
+				Conv:  byteSliceConverter,
 			}
 		}
 	case reflect.Struct:
-		if iface, ok := resolveCustomFieldInterface(t.Type, o, custom); ok {
+		if iface, ok := resolveCustomFieldInterface(t, o, custom); ok {
 			return iface
-		} else if t.Type == reflect.TypeOf(time.Time{}) {
+		} else if t == reflect.TypeOf(time.Time{}) {
 			return FieldInterface{
 				Set:   makeTimeSetter(o),
 				Get:   makeTimeGetter(o),
 				Write: makeTimeWriter(o),
+				Conv:  timeConverter,
 			}
-		} else if t.Type == reflect.TypeOf(sql.NullBool{}) {
+		} else if t == reflect.TypeOf(sql.NullBool{}) {
 			return FieldInterface{
 				Set:   makeNullBoolSetter(o),
 				Get:   makeNullBoolGetter(o),
 				Write: makeNullBoolWriter(o),
+				Conv:  nullBoolConverter,
 			}
-		} else if t.Type == reflect.TypeOf(sql.NullFloat64{}) {
+		} else if t == reflect.TypeOf(sql.NullFloat64{}) {
 			return FieldInterface{
 				Set:   makeNullFloat64Setter(o),
 				Get:   makeNullFloat64Getter(o),
 				Write: makeNullFloat64Writer(o),
+				Conv:  nullFloat64Converter,
 			}
-		} else if t.Type == reflect.TypeOf(sql.NullInt64{}) {
+		} else if t == reflect.TypeOf(sql.NullInt64{}) {
 			return FieldInterface{
 				Set:   makeNullInt64Setter(o),
 				Get:   makeNullInt64Getter(o),
 				Write: makeNullInt64Writer(o),
+				Conv:  nullInt64Converter,
 			}
-		} else if t.Type == reflect.TypeOf(sql.NullString{}) {
+		} else if t == reflect.TypeOf(sql.NullString{}) {
 			return FieldInterface{
 				Set:   makeNullStringSetter(o),
 				Get:   makeNullStringGetter(o),
 				Write: makeNullStringWriter(o),
+				Conv:  nullStringConverter,
 			}
-		} else if t.Type == reflect.TypeOf(pq.NullTime{}) {
+		} else if t == reflect.TypeOf(pq.NullTime{}) {
 			return FieldInterface{
 				Set:   makeNullTimeSetter(o),
 				Get:   makeNullTimeGetter(o),
 				Write: makeNullTimeWriter(o),
+				Conv:  nullTimeConverter,
 			}
 		}
 	}
-	panic("unsupported field type: " + t.Type.String())
+	panic("unsupported field type: " + t.String())
+}
+
+func MakeFieldInterfaceForField(t reflect.StructField, offset uintptr, custom FieldInterfaceResolver) FieldInterface {
+	return makeInterfaceForType(t.Type, t.Offset+offset, custom)
+}
+
+func GetTypeInfo(t reflect.Type, custom FieldInterfaceResolver) *FieldInterface {
+	// quick path, let's try reading saved value
+	typeInfoCacheLock.RLock()
+	v, ok := typeInfoCache[t]
+	if ok {
+		typeInfoCacheLock.RUnlock()
+		return v
+	}
+	typeInfoCacheLock.RUnlock()
+
+	// slow path here, let's scan the struct
+	typeInfoCacheLock.Lock()
+	defer typeInfoCacheLock.Unlock()
+
+	info := makeInterfaceForType(t, 0, custom)
+	typeInfoCache[t] = &info
+	return &info
 }
 
 func GetStructInfo(t reflect.Type, custom FieldInterfaceResolver) *StructInfo {

@@ -13,54 +13,6 @@ import (
 	"unsafe"
 )
 
-func rfc3339ToTime(v string) time.Time {
-	t, err := time.Parse(time.RFC3339, v)
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
-
-func rfc3339NanoToTime(v string) time.Time {
-	t, err := time.Parse(time.RFC3339Nano, v)
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
-
-func openTestDBConnection(t *testing.T) *sql.DB {
-	db, err := sql.Open("postgres", "host=127.0.0.1 port=26257 user=root dbname=test sslmode=disable binary_parameters=yes")
-	if err != nil {
-		t.Fatalf("db connection error: %s", err)
-	}
-	return db
-}
-
-func dbExec(t *testing.T, db *sql.DB, query string) {
-	_, err := db.Exec(query)
-	if err != nil {
-		t.Fatalf("db exec error: %s", err)
-	}
-}
-
-func dbScanSingleRow(t *testing.T, db *sql.DB, query string, vals ...interface{}) {
-	rows, err := db.Query(query)
-	if err != nil {
-		t.Errorf("select failure: %s", err)
-		return
-	}
-	defer rows.Close()
-	if !rows.Next() {
-		t.Errorf("zero rows")
-		return
-	}
-	if err := rows.Scan(vals...); err != nil {
-		t.Errorf("scan failure: %s", err)
-		return
-	}
-}
-
 func TestBatchInsert(t *testing.T) {
 	type FooBar struct {
 		ID        int `db:"primary_key"`
@@ -513,12 +465,6 @@ func TestGetStructInfo(t *testing.T) {
 	}
 }
 
-func assertStringEquals(t *testing.T, v, expected string) {
-	if v != expected {
-		t.Errorf("string values mismatch:\ngot:\n%s\nexpected:\n%s", v, expected)
-	}
-}
-
 func TestCreatedUpdated(t *testing.T) {
 	type CreatedUpdated struct {
 		ID        int64     `db:"primary_key"`
@@ -535,19 +481,4 @@ func TestCreatedUpdated(t *testing.T) {
 	b2.Update(&CreatedUpdated{ID: 1})
 	assertStringEquals(t, b2.Query(),
 		`UPDATE "created_updated" SET "created_at" = TIMESTAMP '0001-01-01 00:00:00', "updated_at" = TIMESTAMP '2012-12-12 12:12:12' WHERE "id" = 1 RETURNING NOTHING`)
-}
-
-func TestBulkInsert(t *testing.T) {
-	type TestStruct struct {
-		ID int64 `db:"primary_key"`
-		A  int
-		B  int
-	}
-	b := New()
-	b.WithBulkInserter(func(bulk *BulkInserter) {
-		for i := 0; i < 3; i++ {
-			bulk.Add(&TestStruct{ID: int64(i), A: i, B: i})
-		}
-	})
-	assertStringEquals(t, b.Query(), `INSERT INTO "test_struct" ("id", "a", "b") VALUES (0, 0, 0), (1, 1, 1), (2, 2, 2)`)
 }

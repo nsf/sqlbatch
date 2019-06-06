@@ -15,7 +15,7 @@ var (
 
 type Batch struct {
 	stmtBuilder         strings.Builder
-	liveNestedBuilders  map[int]struct{}
+	liveNestedBuilders  map[int]string
 	nextNestedBuilderID int
 	now                 time.Time
 }
@@ -76,82 +76,6 @@ func (b *Batch) beginNextStmt() *strings.Builder {
 		sb.WriteString("; ")
 	}
 	return sb
-}
-
-type BulkInserter struct {
-	id      int
-	b       *Batch
-	builder strings.Builder
-	si      *StructInfo
-}
-
-func (b *BulkInserter) Add(v interface{}) *BulkInserter {
-	if b.id == -1 {
-		panic("BulkInserter already committed")
-	}
-
-	structVal := reflect.ValueOf(v)
-	t := assertPointerToStruct(structVal.Type())
-
-	ptr := unsafe.Pointer(structVal.Pointer())
-	si := GetStructInfo(t, CustomFieldInterfaceResolver)
-
-	if b.si != nil && b.si != si {
-		panic("mismatching struct type on subsequent BulkInserter.Insert() calls")
-	}
-
-	sb := &b.builder
-	if b.si == nil {
-		b.si = si
-		// first call, start bulk insert statement
-		sb.WriteString("INSERT INTO ")
-		sb.WriteString(si.QuotedName)
-		sb.WriteString(" (")
-		fieldNamesWriter := newListWriter(sb)
-		for _, f := range si.Fields {
-			fieldNamesWriter.WriteString(f.QuotedName)
-		}
-		sb.WriteString(") VALUES ")
-	} else {
-		sb.WriteString(", ")
-	}
-
-	sb.WriteString("(")
-	writeFieldValues(si, ptr, sb, b.b.now)
-	sb.WriteString(")")
-	return b
-}
-
-func (b *BulkInserter) Commit() {
-	sb := b.b.beginNextStmt()
-	sb.WriteString(b.builder.String())
-	b.b.releaseNestedBuilderID(&b.id)
-}
-
-func (b *Batch) releaseNestedBuilderID(v *int) {
-	delete(b.liveNestedBuilders, *v)
-	*v = -1
-}
-
-func (b *Batch) allocateNestedBuilderID() int {
-	id := b.nextNestedBuilderID
-	b.nextNestedBuilderID++
-	if b.liveNestedBuilders == nil {
-		b.liveNestedBuilders = map[int]struct{}{}
-	}
-	b.liveNestedBuilders[id] = struct{}{}
-	return id
-}
-
-func (b *Batch) BulkInserter() *BulkInserter {
-	return &BulkInserter{b: b, id: b.allocateNestedBuilderID()}
-}
-
-func (b *Batch) WithBulkInserter(cb func(bulk *BulkInserter)) *Batch {
-	bulk := b.BulkInserter()
-	cb(bulk)
-	bulk.Commit()
-	return b
 }
 
 func (b *Batch) Insert(v interface{}) *Batch {
