@@ -24,6 +24,17 @@ func New() *Batch {
 	return &Batch{now: TimeNowFunc()}
 }
 
+func assertSliceOfStructs(t reflect.Type) reflect.Type {
+	if t.Kind() != reflect.Slice {
+		panic("slice of structs expected")
+	}
+	t = t.Elem()
+	if t.Kind() != reflect.Struct {
+		panic("slice of structs expected")
+	}
+	return t
+}
+
 func assertPointerToStruct(t reflect.Type) reflect.Type {
 	if t.Kind() != reflect.Ptr {
 		panic("pointer to struct expected")
