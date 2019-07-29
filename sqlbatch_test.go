@@ -2,6 +2,7 @@ package sqlbatch
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/lib/pq"
@@ -26,7 +27,7 @@ func TestBatchInsert(t *testing.T) {
 	b.Insert(&FooBar{ID: 2, Foo: "foo 2", Bar: "bar 2", CreatedAt: time.Now()})
 	b.Update(&FooBar{ID: 1, Foo: "foo 222", Bar: "bar 222", CreatedAt: time.Now()})
 	b.Update(&FooBar{ID: 2, Foo: "foo 222", Bar: "bar 222", CreatedAt: time.Now()})
-	query := b.Query()
+	query := b.String()
 	t.Log(query)
 
 	db := openTestDBConnection(t)
@@ -66,7 +67,7 @@ func TestStringFormatting(t *testing.T) {
 
 	for i := 0; i < 256; i++ {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			dbExec(t, db, New().Insert(&StringFormat{Key: 1, Value: string([]byte{byte(i)})}).Query())
+			dbExec(t, db, New().Insert(&StringFormat{Key: 1, Value: string([]byte{byte(i)})}).String())
 
 			var s string
 			dbScanSingleRow(t, db, "SELECT value FROM string_format WHERE key = 1", &s)
@@ -74,7 +75,7 @@ func TestStringFormatting(t *testing.T) {
 				t.Errorf("invalid string")
 			}
 
-			dbExec(t, db, New().Delete(&StringFormat{Key: 1}).Query())
+			dbExec(t, db, New().Delete(&StringFormat{Key: 1}).String())
 		})
 	}
 }
@@ -99,7 +100,7 @@ func TestBytesFormatting(t *testing.T) {
 
 	for i := 0; i < 256; i++ {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			dbExec(t, db, New().Insert(&BytesFormat{Key: 1, Value: []byte{byte(i)}}).Query())
+			dbExec(t, db, New().Insert(&BytesFormat{Key: 1, Value: []byte{byte(i)}}).String())
 
 			var b []byte
 			dbScanSingleRow(t, db, "SELECT value FROM bytes_format WHERE key = 1", &b)
@@ -107,12 +108,12 @@ func TestBytesFormatting(t *testing.T) {
 				t.Errorf("invalid bytes")
 			}
 
-			dbExec(t, db, New().Delete(&BytesFormat{Key: 1}).Query())
+			dbExec(t, db, New().Delete(&BytesFormat{Key: 1}).String())
 		})
 	}
 
 	t.Run("MultipleBytes", func(t *testing.T) {
-		dbExec(t, db, New().Insert(&BytesFormat{Key: 1, Value: []byte("проверка")}).Query())
+		dbExec(t, db, New().Insert(&BytesFormat{Key: 1, Value: []byte("проверка")}).String())
 
 		var b []byte
 		dbScanSingleRow(t, db, "SELECT value FROM bytes_format WHERE key = 1", &b)
@@ -120,7 +121,7 @@ func TestBytesFormatting(t *testing.T) {
 			t.Errorf("invalid bytes")
 		}
 
-		dbExec(t, db, New().Delete(&BytesFormat{Key: 1}).Query())
+		dbExec(t, db, New().Delete(&BytesFormat{Key: 1}).String())
 	})
 }
 
@@ -154,7 +155,7 @@ func TestMiscFormatting(t *testing.T) {
 			Insert(&MiscFormat{Key: 3, F: sql.NullFloat64{Valid: true, Float64: math.Inf(1)}}).
 			Insert(&MiscFormat{Key: 4, F: sql.NullFloat64{Valid: true, Float64: math.Inf(-1)}}).
 			Insert(&MiscFormat{Key: 5, F: sql.NullFloat64{Valid: true, Float64: 3.14159265358}}).
-			Query())
+			String())
 
 		assertFloat64 := func(key int64, v sql.NullFloat64) {
 			var ret sql.NullFloat64
@@ -182,7 +183,7 @@ func TestMiscFormatting(t *testing.T) {
 			Insert(&MiscFormat{Key: 3, I: sql.NullInt64{Valid: true, Int64: math.MinInt64}}).
 			Insert(&MiscFormat{Key: 4, I: sql.NullInt64{Valid: true, Int64: math.MaxInt64}}).
 			Insert(&MiscFormat{Key: 5, I: sql.NullInt64{Valid: true, Int64: 63463}}).
-			Query())
+			String())
 
 		assertInt64 := func(key int64, v sql.NullInt64) {
 			var ret sql.NullInt64
@@ -204,7 +205,7 @@ func TestMiscFormatting(t *testing.T) {
 			Insert(&MiscFormat{Key: 1, B: sql.NullBool{}}).
 			Insert(&MiscFormat{Key: 2, B: sql.NullBool{Valid: true, Bool: true}}).
 			Insert(&MiscFormat{Key: 3, B: sql.NullBool{Valid: true, Bool: false}}).
-			Query())
+			String())
 
 		assertBool := func(key int64, v sql.NullBool) {
 			var ret sql.NullBool
@@ -225,7 +226,7 @@ func TestMiscFormatting(t *testing.T) {
 			Insert(&MiscFormat{Key: 2, T: pq.NullTime{Valid: true, Time: rfc3339ToTime("2015-06-02T02:00:56Z")}}).
 			Insert(&MiscFormat{Key: 3, T: pq.NullTime{Valid: true, Time: rfc3339ToTime("1996-12-19T16:39:57-08:00")}}).
 			Insert(&MiscFormat{Key: 4, T: pq.NullTime{Valid: true, Time: rfc3339NanoToTime("2006-01-02T15:04:05.123456789Z")}}).
-			Query())
+			String())
 
 		assertTime := func(key int64, v pq.NullTime) {
 			var ret pq.NullTime
@@ -475,10 +476,136 @@ func TestCreatedUpdated(t *testing.T) {
 	TimeNowFunc = func() time.Time { return rfc3339ToTime("2012-12-12T12:12:12Z") }
 	b1 := New()
 	b1.Insert(&CreatedUpdated{ID: 1})
-	assertStringEquals(t, b1.Query(),
+	assertStringEquals(t, b1.String(),
 		`INSERT INTO "created_updated" ("id", "created_at", "updated_at") VALUES (1, TIMESTAMP '2012-12-12 12:12:12', TIMESTAMP '2012-12-12 12:12:12') RETURNING NOTHING`)
 	b2 := New()
 	b2.Update(&CreatedUpdated{ID: 1})
-	assertStringEquals(t, b2.Query(),
+	assertStringEquals(t, b2.String(),
 		`UPDATE "created_updated" SET "created_at" = TIMESTAMP '0001-01-01 00:00:00', "updated_at" = TIMESTAMP '2012-12-12 12:12:12' WHERE "id" = 1 RETURNING NOTHING`)
+}
+
+func TestGet(t *testing.T) {
+	type CreatedUpdated struct {
+		ID        int64     `db:"primary_key"`
+		CreatedAt time.Time `db:"created"`
+		UpdatedAt time.Time `db:"updated"`
+	}
+
+	var out1, out2 CreatedUpdated
+	var out3 []CreatedUpdated
+
+	{
+		b := New()
+		b.Select(Q(&out1).Where("id = ?", 1))
+		b.Select(Q(&out2).Where("id = ?", 2))
+		assertStringEquals(t, b.String(),
+			`SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 1 LIMIT 1; SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 2 LIMIT 1`)
+	}
+	{
+		b := New()
+		b.Select(Q(&out1))
+		assertStringEquals(t, b.String(),
+			`SELECT "id", "created_at", "updated_at" FROM "created_updated" LIMIT 1`)
+	}
+	{
+		b := New()
+		b.Select(Q(&out1).Where("id = ?", 1).OrderBy("created_at", false).Limit(10))
+		assertStringEquals(t, b.String(),
+			`SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 1 ORDER BY "created_at" DESC LIMIT 1`)
+	}
+	{
+		b := New()
+		b.Select(Q(&out3).Where("id = ?", 1).OrderBy("created_at", false).Limit(10))
+		assertStringEquals(t, b.String(),
+			`SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 1 ORDER BY "created_at" DESC LIMIT 10`)
+	}
+}
+
+func TestQuery(t *testing.T) {
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "test_query";
+		CREATE TABLE "test_query" (
+			id INT NOT NULL,
+			a INT NOT NULL,
+			b STRING NOT NULL,
+			c TIMESTAMP NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (id ASC)
+		);
+		DROP TABLE IF EXISTS "test_query2";
+		CREATE TABLE "test_query2" (
+			id INT NOT NULL,
+			d STRING NOT NULL,
+			e STRING NOT NULL,
+			f STRING NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (id ASC)
+		)
+	`)
+
+	type TestQuery struct {
+		ID int64 `db:"primary_key"`
+		A  int64
+		B  string
+		C  time.Time
+	}
+	type TestQuery2 struct {
+		ID int64 `db:"primary_key"`
+		D  string
+		E  string
+		F  string
+	}
+
+	{
+		b := New()
+		b.Insert(&TestQuery{ID: 1, A: 1, B: "one", C: rfc3339ToTime("2015-06-02T02:00:56Z")})
+		b.Insert(&TestQuery{ID: 2, A: 2, B: "two", C: rfc3339ToTime("2015-06-02T02:01:56Z")})
+		b.Insert(&TestQuery{ID: 3, A: 3, B: "three", C: rfc3339ToTime("2015-06-02T02:02:56Z")})
+		b.Insert(&TestQuery2{ID: 1, D: "D1", E: "E1", F: "F1"})
+		b.Insert(&TestQuery2{ID: 2, D: "D2", E: "E2", F: "F2"})
+		b.Insert(&TestQuery2{ID: 3, D: "D3", E: "E3", F: "F3"})
+		if err := b.Exec(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	{
+		var (
+			out1 TestQuery
+			out2 []TestQuery2
+			out3 []TestQuery
+		)
+		b := New()
+		b.Select(
+			Q(&out3).Where("id > ?", 1).OrderBy("id", false),
+			Q(&out1).Where("id = ?", 1).Limit(1),
+			Q(&out2).OrderBy("id", true),
+		)
+		t.Log(b.String())
+		if err := b.Query(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+		expected1 := TestQuery{ID: 1, A: 1, B: "one", C: rfc3339ToTime("2015-06-02T02:00:56+00:00")}
+		expected2 := []TestQuery2{
+			TestQuery2{ID: 1, D: "D1", E: "E1", F: "F1"},
+			TestQuery2{ID: 2, D: "D2", E: "E2", F: "F2"},
+			TestQuery2{ID: 3, D: "D3", E: "E3", F: "F3"},
+		}
+		expected3 := []TestQuery{
+			TestQuery{ID: 3, A: 3, B: "three", C: rfc3339ToTime("2015-06-02T02:02:56+00:00")},
+			TestQuery{ID: 2, A: 2, B: "two", C: rfc3339ToTime("2015-06-02T02:01:56+00:00")},
+		}
+		if !reflect.DeepEqual(out1, expected1) {
+			t.Errorf("equality expected, got: %v != %v", out1, expected1)
+		}
+		if !reflect.DeepEqual(out2, expected2) {
+			t.Errorf("equality expected, got: %v != %v", out2, expected2)
+		}
+		if !reflect.DeepEqual(out3, expected3) {
+			t.Errorf("equality expected, got: %v != %v", out3, expected3)
+		}
+		t.Logf("%v", out1)
+		t.Logf("%v", out2)
+		t.Logf("%v", out3)
+	}
 }

@@ -22,8 +22,7 @@ type expr struct {
 }
 
 type ExprBuilder struct {
-	root    *expr
-	current *expr
+	root *expr
 }
 
 var placeholderRegexp = regexp.MustCompile(`\?`)
@@ -66,16 +65,17 @@ func exprFromArgs(args ...interface{}) *expr {
 }
 
 func Expr(args ...interface{}) ExprBuilder {
-	e := exprFromArgs(args...)
-	return ExprBuilder{
-		current: e,
-		root:    e,
+	if len(args) == 0 {
+		return ExprBuilder{}
 	}
+	return ExprBuilder{exprFromArgs(args...)}
 }
 
 func (eb ExprBuilder) And(args ...interface{}) ExprBuilder {
+	if eb.root == nil {
+		return ExprBuilder{exprFromArgs(args...)}
+	}
 	return ExprBuilder{
-		current: eb.current,
 		root: &expr{
 			a:    eb.root,
 			b:    exprFromArgs(args...),
@@ -85,14 +85,20 @@ func (eb ExprBuilder) And(args ...interface{}) ExprBuilder {
 }
 
 func (eb ExprBuilder) Or(args ...interface{}) ExprBuilder {
+	if eb.root == nil {
+		return ExprBuilder{exprFromArgs(args...)}
+	}
 	return ExprBuilder{
-		current: eb.current,
 		root: &expr{
 			a:    eb.root,
 			b:    exprFromArgs(args...),
 			kind: exprOr,
 		},
 	}
+}
+
+func (eb ExprBuilder) IsEmpty() bool {
+	return eb.root == nil
 }
 
 func exprToString(e *expr, sb *strings.Builder) {
@@ -112,6 +118,10 @@ func exprToString(e *expr, sb *strings.Builder) {
 		exprToString(e.b, sb)
 		sb.WriteString(")")
 	}
+}
+
+func (eb ExprBuilder) WriteTo(sb *strings.Builder) {
+	exprToString(eb.root, sb)
 }
 
 func (eb ExprBuilder) String() string {

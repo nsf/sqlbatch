@@ -7,10 +7,11 @@ import (
 )
 
 type FieldInterface struct {
-	Get   func(structPtr unsafe.Pointer, ifacePtr *interface{})
-	Set   func(structPtr unsafe.Pointer, iface interface{})
-	Write func(structPtr unsafe.Pointer, b *strings.Builder)
-	Conv  func(iface interface{}, b *strings.Builder)
+	Conv   func(iface interface{}, b *strings.Builder)
+	Get    func(structPtr unsafe.Pointer, ifacePtr *interface{})
+	GetPtr func(structPtr unsafe.Pointer, ifacePtr *interface{})
+	Set    func(structPtr unsafe.Pointer, iface interface{})
+	Write  func(structPtr unsafe.Pointer, b *strings.Builder)
 }
 
 type FieldInfoFlag uint32

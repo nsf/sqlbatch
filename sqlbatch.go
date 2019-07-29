@@ -1,6 +1,9 @@
 package sqlbatch
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"github.com/lib/pq"
 	"reflect"
 	"strings"
@@ -18,6 +21,7 @@ type Batch struct {
 	liveNestedBuilders  map[int]string
 	nextNestedBuilderID int
 	now                 time.Time
+	readIntos           []readInto
 }
 
 func New() *Batch {
@@ -44,6 +48,27 @@ func assertPointerToStruct(t reflect.Type) reflect.Type {
 		panic("pointer to struct expected")
 	}
 	return t
+}
+
+func assertPointerToStructOrSliceOfStructs(t reflect.Type) (reflect.Type, bool) {
+	isSlice := false
+	if t.Kind() != reflect.Ptr {
+		panic("pointer to struct or pointer to slice of structs expected")
+	}
+	t = t.Elem()
+	switch t.Kind() {
+	case reflect.Slice:
+		isSlice = true
+		t = t.Elem()
+		if t.Kind() != reflect.Struct {
+			panic("pointer to struct or pointer to slice of structs expected")
+		}
+	case reflect.Struct:
+		// do nothing
+	default:
+		panic("pointer to struct or pointer to slice of structs expected")
+	}
+	return t, isSlice
 }
 
 func assertHasPrimaryKeys(si *StructInfo) {
@@ -153,6 +178,108 @@ func (b *Batch) Delete(v interface{}) *Batch {
 	return b
 }
 
-func (b *Batch) Query() string {
+func (b *Batch) Select(qs ...*QBuilder) *Batch {
+	for _, q := range qs {
+		if q.into == nil {
+			panic("make sure to call Q().Into(&v) before submitting the Q")
+		}
+		val := reflect.ValueOf(q.into)
+		t, isSlice := assertPointerToStructOrSliceOfStructs(val.Type())
+
+		si := GetStructInfo(t, CustomFieldInterfaceResolver)
+		b.readIntos = append(b.readIntos, readInto{
+			si:    si,
+			slice: isSlice,
+			ptr:   unsafe.Pointer(val.Pointer()),
+			val:   val,
+			errp:  q.errp,
+		})
+
+		sb := b.beginNextStmt()
+		sb.WriteString("SELECT ")
+		fieldNamesWriter := newListWriter(sb)
+		for _, f := range si.Fields {
+			fieldNamesWriter.WriteString(f.QuotedName)
+		}
+		sb.WriteString(" FROM ")
+		sb.WriteString(si.QuotedName)
+		q.setImplicitLimit(isSlice)
+		q.WriteTo(sb, si)
+	}
+	return b
+}
+
+func (b *Batch) Exec(ctx context.Context, conn *sql.DB) error {
+	_, err := conn.ExecContext(ctx, b.String())
+	return err
+}
+
+var ErrNotFound = errors.New("not found")
+
+func (b *Batch) Query(ctx context.Context, conn *sql.DB) error {
+	rows, err := conn.QueryContext(ctx, b.String())
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var ptrs []interface{}
+	for _, r := range b.readIntos {
+		if cap(ptrs) < len(r.si.Fields) {
+			ptrs = make([]interface{}, 0, len(r.si.Fields))
+		}
+		ptrs = ptrs[:len(r.si.Fields)]
+		if r.slice {
+			val := r.val.Elem() // get the slice itself
+			idx := 0
+			for rows.Next() {
+				if idx >= val.Cap() {
+					newCap := val.Cap() * 2
+					if idx >= newCap {
+						newCap = idx + 1
+					}
+					newSlice := reflect.MakeSlice(val.Type(), val.Len(), newCap)
+					reflect.Copy(newSlice, val)
+					val.Set(newSlice)
+				}
+				if idx >= val.Len() {
+					val.SetLen(idx + 1)
+				}
+				ptr := unsafe.Pointer(val.Index(idx).Addr().Pointer())
+				for i, f := range r.si.Fields {
+					f.Interface.GetPtr(ptr, &ptrs[i])
+				}
+				if err := rows.Scan(ptrs...); err != nil {
+					return err
+				}
+				idx++
+			}
+			val.SetLen(idx)
+		} else {
+			hasValue := rows.Next()
+			if !hasValue {
+				if r.errp != nil {
+					*r.errp = ErrNotFound
+				}
+			} else {
+				for i, f := range r.si.Fields {
+					f.Interface.GetPtr(r.ptr, &ptrs[i])
+				}
+				if err := rows.Scan(ptrs...); err != nil {
+					return err
+				}
+				for rows.Next() {
+					// skip all the extra rows for single item fetch
+				}
+			}
+		}
+		if !rows.NextResultSet() {
+			break
+		}
+	}
+	return nil
+}
+
+func (b *Batch) String() string {
 	return b.stmtBuilder.String()
 }
