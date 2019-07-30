@@ -69,196 +69,198 @@ func resolveCustomFieldInterface(t reflect.Type, offset uintptr, custom FieldInt
 }
 
 func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolver) FieldInterface {
-	switch t.Kind() {
-	case reflect.Bool:
-		return FieldInterface{
-			Set:    makeBoolSetter(o),
-			Get:    makeBoolGetter(o),
-			GetPtr: makeBoolPtrGetter(o),
-			Write:  makeBoolWriter(o),
-			Conv:   boolConverter,
-		}
-	case reflect.Int:
-		return FieldInterface{
-			Set:    makeIntSetter(o),
-			Get:    makeIntGetter(o),
-			GetPtr: makeIntPtrGetter(o),
-			Write:  makeIntWriter(o),
-			Conv:   intConverter,
-		}
-	case reflect.Int8:
-		return FieldInterface{
-			Set:    makeInt8Setter(o),
-			Get:    makeInt8Getter(o),
-			GetPtr: makeInt8PtrGetter(o),
-			Write:  makeInt8Writer(o),
-			Conv:   int8Converter,
-		}
-	case reflect.Int16:
-		return FieldInterface{
-			Set:    makeInt16Setter(o),
-			Get:    makeInt16Getter(o),
-			GetPtr: makeInt16PtrGetter(o),
-			Write:  makeInt16Writer(o),
-			Conv:   int16Converter,
-		}
-	case reflect.Int32:
-		return FieldInterface{
-			Set:    makeInt32Setter(o),
-			Get:    makeInt32Getter(o),
-			GetPtr: makeInt32PtrGetter(o),
-			Write:  makeInt32Writer(o),
-			Conv:   int32Converter,
-		}
-	case reflect.Int64:
-		return FieldInterface{
-			Set:    makeInt64Setter(o),
-			Get:    makeInt64Getter(o),
-			GetPtr: makeInt64PtrGetter(o),
-			Write:  makeInt64Writer(o),
-			Conv:   int64Converter,
-		}
-	case reflect.Uint:
-		return FieldInterface{
-			Set:    makeUintSetter(o),
-			Get:    makeUintGetter(o),
-			GetPtr: makeUintPtrGetter(o),
-			Write:  makeUintWriter(o),
-			Conv:   uintConverter,
-		}
-	case reflect.Uint8:
-		return FieldInterface{
-			Set:    makeUint8Setter(o),
-			Get:    makeUint8Getter(o),
-			GetPtr: makeUint8PtrGetter(o),
-			Write:  makeUint8Writer(o),
-			Conv:   uint8Converter,
-		}
-	case reflect.Uint16:
-		return FieldInterface{
-			Set:    makeUint16Setter(o),
-			Get:    makeUint16Getter(o),
-			GetPtr: makeUint16PtrGetter(o),
-			Write:  makeUint16Writer(o),
-			Conv:   uint16Converter,
-		}
-	case reflect.Uint32:
-		return FieldInterface{
-			Set:    makeUint32Setter(o),
-			Get:    makeUint32Getter(o),
-			GetPtr: makeUint32PtrGetter(o),
-			Write:  makeUint32Writer(o),
-			Conv:   uint32Converter,
-		}
-	case reflect.Uint64:
-		return FieldInterface{
-			Set:    makeUint64Setter(o),
-			Get:    makeUint64Getter(o),
-			GetPtr: makeUint64PtrGetter(o),
-			Write:  makeUint64Writer(o),
-			Conv:   uint64Converter,
-		}
-	case reflect.String:
-		return FieldInterface{
-			Set:    makeStringSetter(o),
-			Get:    makeStringGetter(o),
-			GetPtr: makeStringPtrGetter(o),
-			Write:  makeStringWriter(o),
-			Conv:   stringConverter,
-		}
-	case reflect.Float32:
-		return FieldInterface{
-			Set:    makeFloat32Setter(o),
-			Get:    makeFloat32Getter(o),
-			GetPtr: makeFloat32PtrGetter(o),
-			Write:  makeFloat32Writer(o),
-			Conv:   float32Converter,
-		}
-	case reflect.Float64:
-		return FieldInterface{
-			Set:    makeFloat64Setter(o),
-			Get:    makeFloat64Getter(o),
-			GetPtr: makeFloat64PtrGetter(o),
-			Write:  makeFloat64Writer(o),
-			Conv:   float64Converter,
-		}
-	case reflect.Slice:
-		switch t.Elem().Kind() {
-		case reflect.Uint8: // byte slice
+	if iface, ok := resolveCustomFieldInterface(t, o, custom); ok {
+		return iface
+	} else {
+		switch t.Kind() {
+		case reflect.Bool:
 			return FieldInterface{
-				Set:    makeByteSliceSetter(o),
-				Get:    makeByteSliceGetter(o),
-				GetPtr: makeByteSlicePtrGetter(o),
-				Write:  makeByteSliceWriter(o),
-				Conv:   byteSliceConverter,
+				Set:    makeBoolSetter(o),
+				Get:    makeBoolGetter(o),
+				GetPtr: makeBoolPtrGetter(o),
+				Write:  makeBoolWriter(o),
+				Conv:   boolConverter,
 			}
-		case reflect.Int64: // array of numbers
+		case reflect.Int:
 			return FieldInterface{
-				Set:    makeInt64SliceSetter(o),
-				Get:    makeInt64SliceGetter(o),
-				GetPtr: makeInt64SlicePtrGetter(o),
-				Write:  makeInt64SliceWriter(o),
-				Conv:   int64SliceConverter,
+				Set:    makeIntSetter(o),
+				Get:    makeIntGetter(o),
+				GetPtr: makeIntPtrGetter(o),
+				Write:  makeIntWriter(o),
+				Conv:   intConverter,
 			}
-		case reflect.String: // array of strings
+		case reflect.Int8:
 			return FieldInterface{
-				Set:    makeStringSliceSetter(o),
-				Get:    makeStringSliceGetter(o),
-				GetPtr: makeStringSlicePtrGetter(o),
-				Write:  makeStringSliceWriter(o),
-				Conv:   stringSliceConverter,
+				Set:    makeInt8Setter(o),
+				Get:    makeInt8Getter(o),
+				GetPtr: makeInt8PtrGetter(o),
+				Write:  makeInt8Writer(o),
+				Conv:   int8Converter,
 			}
-		}
-	case reflect.Struct:
-		if iface, ok := resolveCustomFieldInterface(t, o, custom); ok {
-			return iface
-		} else if t == reflect.TypeOf(time.Time{}) {
+		case reflect.Int16:
 			return FieldInterface{
-				Set:    makeTimeSetter(o),
-				Get:    makeTimeGetter(o),
-				GetPtr: makeTimePtrGetter(o),
-				Write:  makeTimeWriter(o),
-				Conv:   timeConverter,
+				Set:    makeInt16Setter(o),
+				Get:    makeInt16Getter(o),
+				GetPtr: makeInt16PtrGetter(o),
+				Write:  makeInt16Writer(o),
+				Conv:   int16Converter,
 			}
-		} else if t == reflect.TypeOf(sql.NullBool{}) {
+		case reflect.Int32:
 			return FieldInterface{
-				Set:    makeNullBoolSetter(o),
-				Get:    makeNullBoolGetter(o),
-				GetPtr: makeNullBoolPtrGetter(o),
-				Write:  makeNullBoolWriter(o),
-				Conv:   nullBoolConverter,
+				Set:    makeInt32Setter(o),
+				Get:    makeInt32Getter(o),
+				GetPtr: makeInt32PtrGetter(o),
+				Write:  makeInt32Writer(o),
+				Conv:   int32Converter,
 			}
-		} else if t == reflect.TypeOf(sql.NullFloat64{}) {
+		case reflect.Int64:
 			return FieldInterface{
-				Set:    makeNullFloat64Setter(o),
-				Get:    makeNullFloat64Getter(o),
-				GetPtr: makeNullFloat64PtrGetter(o),
-				Write:  makeNullFloat64Writer(o),
-				Conv:   nullFloat64Converter,
+				Set:    makeInt64Setter(o),
+				Get:    makeInt64Getter(o),
+				GetPtr: makeInt64PtrGetter(o),
+				Write:  makeInt64Writer(o),
+				Conv:   int64Converter,
 			}
-		} else if t == reflect.TypeOf(sql.NullInt64{}) {
+		case reflect.Uint:
 			return FieldInterface{
-				Set:    makeNullInt64Setter(o),
-				Get:    makeNullInt64Getter(o),
-				GetPtr: makeNullInt64PtrGetter(o),
-				Write:  makeNullInt64Writer(o),
-				Conv:   nullInt64Converter,
+				Set:    makeUintSetter(o),
+				Get:    makeUintGetter(o),
+				GetPtr: makeUintPtrGetter(o),
+				Write:  makeUintWriter(o),
+				Conv:   uintConverter,
 			}
-		} else if t == reflect.TypeOf(sql.NullString{}) {
+		case reflect.Uint8:
 			return FieldInterface{
-				Set:    makeNullStringSetter(o),
-				Get:    makeNullStringGetter(o),
-				GetPtr: makeNullStringPtrGetter(o),
-				Write:  makeNullStringWriter(o),
-				Conv:   nullStringConverter,
+				Set:    makeUint8Setter(o),
+				Get:    makeUint8Getter(o),
+				GetPtr: makeUint8PtrGetter(o),
+				Write:  makeUint8Writer(o),
+				Conv:   uint8Converter,
 			}
-		} else if t == reflect.TypeOf(pq.NullTime{}) {
+		case reflect.Uint16:
 			return FieldInterface{
-				Set:    makeNullTimeSetter(o),
-				Get:    makeNullTimeGetter(o),
-				GetPtr: makeNullTimePtrGetter(o),
-				Write:  makeNullTimeWriter(o),
-				Conv:   nullTimeConverter,
+				Set:    makeUint16Setter(o),
+				Get:    makeUint16Getter(o),
+				GetPtr: makeUint16PtrGetter(o),
+				Write:  makeUint16Writer(o),
+				Conv:   uint16Converter,
+			}
+		case reflect.Uint32:
+			return FieldInterface{
+				Set:    makeUint32Setter(o),
+				Get:    makeUint32Getter(o),
+				GetPtr: makeUint32PtrGetter(o),
+				Write:  makeUint32Writer(o),
+				Conv:   uint32Converter,
+			}
+		case reflect.Uint64:
+			return FieldInterface{
+				Set:    makeUint64Setter(o),
+				Get:    makeUint64Getter(o),
+				GetPtr: makeUint64PtrGetter(o),
+				Write:  makeUint64Writer(o),
+				Conv:   uint64Converter,
+			}
+		case reflect.String:
+			return FieldInterface{
+				Set:    makeStringSetter(o),
+				Get:    makeStringGetter(o),
+				GetPtr: makeStringPtrGetter(o),
+				Write:  makeStringWriter(o),
+				Conv:   stringConverter,
+			}
+		case reflect.Float32:
+			return FieldInterface{
+				Set:    makeFloat32Setter(o),
+				Get:    makeFloat32Getter(o),
+				GetPtr: makeFloat32PtrGetter(o),
+				Write:  makeFloat32Writer(o),
+				Conv:   float32Converter,
+			}
+		case reflect.Float64:
+			return FieldInterface{
+				Set:    makeFloat64Setter(o),
+				Get:    makeFloat64Getter(o),
+				GetPtr: makeFloat64PtrGetter(o),
+				Write:  makeFloat64Writer(o),
+				Conv:   float64Converter,
+			}
+		case reflect.Slice:
+			switch t.Elem().Kind() {
+			case reflect.Uint8: // byte slice
+				return FieldInterface{
+					Set:    makeByteSliceSetter(o),
+					Get:    makeByteSliceGetter(o),
+					GetPtr: makeByteSlicePtrGetter(o),
+					Write:  makeByteSliceWriter(o),
+					Conv:   byteSliceConverter,
+				}
+			case reflect.Int64: // array of numbers
+				return FieldInterface{
+					Set:    makeInt64SliceSetter(o),
+					Get:    makeInt64SliceGetter(o),
+					GetPtr: makeInt64SlicePtrGetter(o),
+					Write:  makeInt64SliceWriter(o),
+					Conv:   int64SliceConverter,
+				}
+			case reflect.String: // array of strings
+				return FieldInterface{
+					Set:    makeStringSliceSetter(o),
+					Get:    makeStringSliceGetter(o),
+					GetPtr: makeStringSlicePtrGetter(o),
+					Write:  makeStringSliceWriter(o),
+					Conv:   stringSliceConverter,
+				}
+			}
+		case reflect.Struct:
+			if t == reflect.TypeOf(time.Time{}) {
+				return FieldInterface{
+					Set:    makeTimeSetter(o),
+					Get:    makeTimeGetter(o),
+					GetPtr: makeTimePtrGetter(o),
+					Write:  makeTimeWriter(o),
+					Conv:   timeConverter,
+				}
+			} else if t == reflect.TypeOf(sql.NullBool{}) {
+				return FieldInterface{
+					Set:    makeNullBoolSetter(o),
+					Get:    makeNullBoolGetter(o),
+					GetPtr: makeNullBoolPtrGetter(o),
+					Write:  makeNullBoolWriter(o),
+					Conv:   nullBoolConverter,
+				}
+			} else if t == reflect.TypeOf(sql.NullFloat64{}) {
+				return FieldInterface{
+					Set:    makeNullFloat64Setter(o),
+					Get:    makeNullFloat64Getter(o),
+					GetPtr: makeNullFloat64PtrGetter(o),
+					Write:  makeNullFloat64Writer(o),
+					Conv:   nullFloat64Converter,
+				}
+			} else if t == reflect.TypeOf(sql.NullInt64{}) {
+				return FieldInterface{
+					Set:    makeNullInt64Setter(o),
+					Get:    makeNullInt64Getter(o),
+					GetPtr: makeNullInt64PtrGetter(o),
+					Write:  makeNullInt64Writer(o),
+					Conv:   nullInt64Converter,
+				}
+			} else if t == reflect.TypeOf(sql.NullString{}) {
+				return FieldInterface{
+					Set:    makeNullStringSetter(o),
+					Get:    makeNullStringGetter(o),
+					GetPtr: makeNullStringPtrGetter(o),
+					Write:  makeNullStringWriter(o),
+					Conv:   nullStringConverter,
+				}
+			} else if t == reflect.TypeOf(pq.NullTime{}) {
+				return FieldInterface{
+					Set:    makeNullTimeSetter(o),
+					Get:    makeNullTimeGetter(o),
+					GetPtr: makeNullTimePtrGetter(o),
+					Write:  makeNullTimeWriter(o),
+					Conv:   nullTimeConverter,
+				}
 			}
 		}
 	}

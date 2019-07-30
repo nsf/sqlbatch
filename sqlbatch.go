@@ -17,11 +17,12 @@ var (
 )
 
 type Batch struct {
-	stmtBuilder         strings.Builder
-	liveNestedBuilders  map[int]string
-	nextNestedBuilderID int
-	now                 time.Time
-	readIntos           []readInto
+	stmtBuilder                  strings.Builder
+	liveNestedBuilders           map[int]string
+	nextNestedBuilderID          int
+	now                          time.Time
+	readIntos                    []readInto
+	customFieldInterfaceResolver FieldInterfaceResolver
 }
 
 func New() *Batch {
@@ -106,6 +107,13 @@ func setTime(f *FieldInfo, ptr unsafe.Pointer, t time.Time) {
 	}
 }
 
+func (b *Batch) customResolver() FieldInterfaceResolver {
+	if b.customFieldInterfaceResolver != nil {
+		return b.customFieldInterfaceResolver
+	}
+	return CustomFieldInterfaceResolver
+}
+
 func (b *Batch) beginNextStmt() *strings.Builder {
 	sb := &b.stmtBuilder
 	if sb.Len() != 0 {
@@ -114,12 +122,17 @@ func (b *Batch) beginNextStmt() *strings.Builder {
 	return sb
 }
 
+func (b *Batch) SetCustomFieldInterfaceResolver(f FieldInterfaceResolver) *Batch {
+	b.customFieldInterfaceResolver = f
+	return b
+}
+
 func (b *Batch) Insert(v interface{}) *Batch {
 	structVal := reflect.ValueOf(v)
 	t := assertPointerToStruct(structVal.Type())
 
 	ptr := unsafe.Pointer(structVal.Pointer())
-	si := GetStructInfo(t, CustomFieldInterfaceResolver)
+	si := GetStructInfo(t, b.customResolver())
 
 	sb := b.beginNextStmt()
 	sb.WriteString("INSERT INTO ")
@@ -140,7 +153,7 @@ func (b *Batch) Update(v interface{}) *Batch {
 	t := assertPointerToStruct(structVal.Type())
 
 	ptr := unsafe.Pointer(structVal.Pointer())
-	si := GetStructInfo(t, CustomFieldInterfaceResolver)
+	si := GetStructInfo(t, b.customResolver())
 	assertHasPrimaryKeys(si)
 
 	sb := b.beginNextStmt()
@@ -167,7 +180,7 @@ func (b *Batch) Delete(v interface{}) *Batch {
 	t := assertPointerToStruct(structVal.Type())
 
 	ptr := unsafe.Pointer(structVal.Pointer())
-	si := GetStructInfo(t, CustomFieldInterfaceResolver)
+	si := GetStructInfo(t, b.customResolver())
 	assertHasPrimaryKeys(si)
 
 	sb := b.beginNextStmt()
@@ -186,7 +199,7 @@ func (b *Batch) Select(qs ...*QBuilder) *Batch {
 		val := reflect.ValueOf(q.into)
 		t, isSlice := assertPointerToStructOrSliceOfStructs(val.Type())
 
-		si := GetStructInfo(t, CustomFieldInterfaceResolver)
+		si := GetStructInfo(t, b.customResolver())
 		b.readIntos = append(b.readIntos, readInto{
 			si:    si,
 			slice: isSlice,
