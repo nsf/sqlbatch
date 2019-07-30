@@ -193,6 +193,34 @@ func makeUint64Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.
 
 //--------------------------------------------------------------------------
 
+func makeInt64SliceWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
+	return func(structPtr unsafe.Pointer, b *strings.Builder) {
+		p := unsafe.Pointer(uintptr(structPtr) + offset)
+		val := *(*[]int64)(p)
+		for i, v := range val {
+			appendInt64(b, v, false)
+			if i != len(val)-1 {
+				b.WriteString(", ")
+			}
+		}
+	}
+}
+
+func makeStringSliceWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
+	return func(structPtr unsafe.Pointer, b *strings.Builder) {
+		p := unsafe.Pointer(uintptr(structPtr) + offset)
+		val := *(*[]string)(p)
+		for i, v := range val {
+			appendString(b, v, false)
+			if i != len(val)-1 {
+				b.WriteString(", ")
+			}
+		}
+	}
+}
+
+//--------------------------------------------------------------------------
+
 // time.Time
 func appendTime(b *strings.Builder, t time.Time, isNull bool) {
 	if isNull {

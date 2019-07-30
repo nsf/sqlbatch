@@ -121,3 +121,25 @@ func uint64Converter(iface interface{}, b *strings.Builder) {
 	val := iface.(uint64)
 	appendUint64(b, uint64(val), false)
 }
+
+//--------------------------------------------------------------------------
+
+func int64SliceConverter(iface interface{}, b *strings.Builder) {
+	val := iface.([]int64)
+	for i, v := range val {
+		appendInt64(b, v, false)
+		if i != len(val)-1 {
+			b.WriteString(", ")
+		}
+	}
+}
+
+func stringSliceConverter(iface interface{}, b *strings.Builder) {
+	val := iface.([]string)
+	for i, v := range val {
+		appendString(b, v, false)
+		if i != len(val)-1 {
+			b.WriteString(", ")
+		}
+	}
+}

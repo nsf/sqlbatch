@@ -165,3 +165,19 @@ func makeUint64Setter(offset uintptr) func(structPtr unsafe.Pointer, ifacePtr in
 		*(*uint64)(p) = ifacePtr.(uint64)
 	}
 }
+
+//--------------------------------------------------------------------------
+
+func makeInt64SliceSetter(offset uintptr) func(structPtr unsafe.Pointer, ifacePtr interface{}) {
+	return func(structPtr unsafe.Pointer, ifacePtr interface{}) {
+		p := unsafe.Pointer(uintptr(structPtr) + offset)
+		*(*[]int64)(p) = ifacePtr.([]int64)
+	}
+}
+
+func makeStringSliceSetter(offset uintptr) func(structPtr unsafe.Pointer, ifacePtr interface{}) {
+	return func(structPtr unsafe.Pointer, ifacePtr interface{}) {
+		p := unsafe.Pointer(uintptr(structPtr) + offset)
+		*(*[]string)(p) = ifacePtr.([]string)
+	}
+}

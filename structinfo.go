@@ -183,13 +183,30 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 			Conv:   float64Converter,
 		}
 	case reflect.Slice:
-		if t.Elem().Kind() == reflect.Uint8 { // byte slice
+		switch t.Elem().Kind() {
+		case reflect.Uint8: // byte slice
 			return FieldInterface{
 				Set:    makeByteSliceSetter(o),
 				Get:    makeByteSliceGetter(o),
 				GetPtr: makeByteSlicePtrGetter(o),
 				Write:  makeByteSliceWriter(o),
 				Conv:   byteSliceConverter,
+			}
+		case reflect.Int64: // array of numbers
+			return FieldInterface{
+				Set:    makeInt64SliceSetter(o),
+				Get:    makeInt64SliceGetter(o),
+				GetPtr: makeInt64SlicePtrGetter(o),
+				Write:  makeInt64SliceWriter(o),
+				Conv:   int64SliceConverter,
+			}
+		case reflect.String: // array of strings
+			return FieldInterface{
+				Set:    makeStringSliceSetter(o),
+				Get:    makeStringSliceGetter(o),
+				GetPtr: makeStringSlicePtrGetter(o),
+				Write:  makeStringSliceWriter(o),
+				Conv:   stringSliceConverter,
 			}
 		}
 	case reflect.Struct:

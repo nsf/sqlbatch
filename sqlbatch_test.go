@@ -609,3 +609,46 @@ func TestQuery(t *testing.T) {
 		t.Logf("%v", out3)
 	}
 }
+
+func TestArrayInWhereExpr(t *testing.T) {
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "test_arr";
+		CREATE TABLE "test_arr" (
+			id INT NOT NULL,
+			a STRING NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (id ASC)
+		);
+	`)
+
+	type TestArr struct {
+		ID int64 `db:"primary_key"`
+		A  string
+	}
+
+	{
+		b := New()
+		b.Insert(&TestArr{ID: 1, A: "one"})
+		b.Insert(&TestArr{ID: 2, A: "two"})
+		b.Insert(&TestArr{ID: 3, A: "three"})
+		b.Insert(&TestArr{ID: 4, A: "four"})
+		b.Insert(&TestArr{ID: 5, A: "five"})
+		b.Insert(&TestArr{ID: 6, A: "six"})
+		if err := b.Exec(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	{
+		var out []TestArr
+		b := New().Select(
+			Q(&out).Where("id in (?)", []int64{1, 2, 3}),
+			Q(&out).Where("a in (?)", []string{"one", "two"}),
+		)
+		assertStringEquals(t, b.String(), `SELECT "id", "a" FROM "test_arr" WHERE id in (1, 2, 3); SELECT "id", "a" FROM "test_arr" WHERE a in ('one', 'two')`)
+		if err := b.Query(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
