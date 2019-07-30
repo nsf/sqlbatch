@@ -53,6 +53,7 @@ func exprFromArgs(args ...interface{}) *expr {
 					t := GetTypeInfo(reflect.TypeOf(rest[i]), CustomFieldInterfaceResolver)
 					var sb strings.Builder
 					t.Conv(rest[i], &sb)
+					i++
 					return sb.String()
 				}),
 			}
