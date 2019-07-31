@@ -37,7 +37,7 @@ func (b *BulkInserter) AddMany(v interface{}) *BulkInserter {
 	structSize := t.Size()
 
 	ptr := unsafe.Pointer(sliceVal.Pointer())
-	si := GetStructInfo(t, CustomFieldInterfaceResolver)
+	si := GetStructInfo(t, b.b.customFieldInterfaceResolver)
 
 	if b.si != nil && b.si != si {
 		panic("mismatching struct type on subsequent BulkInserter method calls")
@@ -53,7 +53,7 @@ func (b *BulkInserter) AddMany(v interface{}) *BulkInserter {
 
 	for i := 0; i < sliceLen; i++ {
 		sb.WriteString("(")
-		writeFieldValues(si, ptr, sb, b.b.now)
+		writeFieldValues(si, ptr, sb, b.b.timeNow())
 		sb.WriteString(")")
 		if i != sliceLen-1 {
 			sb.WriteString(", ")
@@ -70,7 +70,7 @@ func (b *BulkInserter) Add(v interface{}) *BulkInserter {
 	t := assertPointerToStruct(structVal.Type())
 
 	ptr := unsafe.Pointer(structVal.Pointer())
-	si := GetStructInfo(t, CustomFieldInterfaceResolver)
+	si := GetStructInfo(t, b.b.customFieldInterfaceResolver)
 
 	if b.si != nil && b.si != si {
 		panic("mismatching struct type on subsequent BulkInserter method calls")
@@ -86,7 +86,7 @@ func (b *BulkInserter) Add(v interface{}) *BulkInserter {
 	}
 
 	sb.WriteString("(")
-	writeFieldValues(si, ptr, sb, b.b.now)
+	writeFieldValues(si, ptr, sb, b.b.timeNow())
 	sb.WriteString(")")
 	return b
 }

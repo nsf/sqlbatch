@@ -10,6 +10,7 @@ type orderByField struct {
 }
 
 type QBuilder struct {
+	b             *Batch
 	into          interface{}
 	whereExprs    []ExprBuilder
 	limit         int64
@@ -20,7 +21,7 @@ type QBuilder struct {
 	errp          *error
 }
 
-func Q(into ...interface{}) *QBuilder {
+func (b *Batch) Q(into ...interface{}) *QBuilder {
 	if len(into) > 1 {
 		panic("multiple arguments are not allowed, this is a single optional argument")
 	}
@@ -28,7 +29,7 @@ func Q(into ...interface{}) *QBuilder {
 	if len(into) > 0 {
 		intoVal = into[0]
 	}
-	return &QBuilder{into: intoVal}
+	return &QBuilder{b: b, into: intoVal}
 }
 
 func (q *QBuilder) setImplicitLimit(isSlice bool) {
@@ -44,7 +45,7 @@ func (q *QBuilder) Into(v interface{}) *QBuilder {
 }
 
 func (q *QBuilder) Where(args ...interface{}) *QBuilder {
-	q.whereExprs = append(q.whereExprs, Expr(args...))
+	q.whereExprs = append(q.whereExprs, q.b.Expr(args...))
 	return q
 }
 
@@ -107,11 +108,11 @@ func (q *QBuilder) WriteTo(sb *strings.Builder, si *StructInfo) {
 
 	// LIMIT
 	if q.limitDefined {
-		Expr(" LIMIT ?", q.limit).WriteTo(sb)
+		q.b.Expr(" LIMIT ?", q.limit).WriteTo(sb)
 	}
 
 	// OFFSET
 	if q.offsetDefined {
-		Expr(" OFFSET ?", q.offset).WriteTo(sb)
+		q.b.Expr(" OFFSET ?", q.offset).WriteTo(sb)
 	}
 }

@@ -11,22 +11,18 @@ import (
 	"unsafe"
 )
 
-var (
-	CustomFieldInterfaceResolver FieldInterfaceResolver
-	TimeNowFunc                  = time.Now
-)
-
 type Batch struct {
 	stmtBuilder                  strings.Builder
 	liveNestedBuilders           map[int]string
 	nextNestedBuilderID          int
+	timeNowFunc                  func() time.Time
 	now                          time.Time
 	readIntos                    []readInto
 	customFieldInterfaceResolver FieldInterfaceResolver
 }
 
 func New() *Batch {
-	return &Batch{now: TimeNowFunc()}
+	return &Batch{}
 }
 
 func assertSliceOfStructs(t reflect.Type) reflect.Type {
@@ -107,11 +103,20 @@ func setTime(f *FieldInfo, ptr unsafe.Pointer, t time.Time) {
 	}
 }
 
-func (b *Batch) customResolver() FieldInterfaceResolver {
-	if b.customFieldInterfaceResolver != nil {
-		return b.customFieldInterfaceResolver
+func (b *Batch) timeNow() time.Time {
+	if !b.now.IsZero() {
+		return b.now
 	}
-	return CustomFieldInterfaceResolver
+	if b.timeNowFunc != nil {
+		b.now = b.timeNowFunc()
+	} else {
+		b.now = time.Now()
+	}
+	return b.now
+}
+
+func (b *Batch) customResolver() FieldInterfaceResolver {
+	return b.customFieldInterfaceResolver
 }
 
 func (b *Batch) beginNextStmt() *strings.Builder {
@@ -120,6 +125,11 @@ func (b *Batch) beginNextStmt() *strings.Builder {
 		sb.WriteString("; ")
 	}
 	return sb
+}
+
+func (b *Batch) SetTimeNowFunc(f func() time.Time) *Batch {
+	b.timeNowFunc = f
+	return b
 }
 
 func (b *Batch) SetCustomFieldInterfaceResolver(f FieldInterfaceResolver) *Batch {
@@ -143,7 +153,7 @@ func (b *Batch) Insert(v interface{}) *Batch {
 		fieldNamesWriter.WriteString(f.QuotedName)
 	}
 	sb.WriteString(") VALUES (")
-	writeFieldValues(si, ptr, sb, b.now)
+	writeFieldValues(si, ptr, sb, b.timeNow())
 	sb.WriteString(") RETURNING NOTHING")
 	return b
 }
@@ -163,7 +173,7 @@ func (b *Batch) Update(v interface{}) *Batch {
 	valsWriter := newListWriter(sb)
 	for _, f := range si.NonPrimaryKeys {
 		if f.IsUpdated() {
-			setTime(f, ptr, b.now)
+			setTime(f, ptr, b.timeNow())
 		}
 		b := valsWriter.Next()
 		b.WriteString(f.QuotedName)

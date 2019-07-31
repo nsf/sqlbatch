@@ -22,12 +22,13 @@ type expr struct {
 }
 
 type ExprBuilder struct {
+	b    *Batch
 	root *expr
 }
 
 var placeholderRegexp = regexp.MustCompile(`\?`)
 
-func exprFromArgs(args ...interface{}) *expr {
+func exprFromArgs(b *Batch, args ...interface{}) *expr {
 	if len(args) == 0 {
 		panic("some argument is required")
 	}
@@ -50,7 +51,7 @@ func exprFromArgs(args ...interface{}) *expr {
 			return &expr{
 				kind: exprScalar,
 				val: placeholderRegexp.ReplaceAllStringFunc(first, func(v string) string {
-					t := GetTypeInfo(reflect.TypeOf(rest[i]), CustomFieldInterfaceResolver)
+					t := GetTypeInfo(reflect.TypeOf(rest[i]), b.customFieldInterfaceResolver)
 					var sb strings.Builder
 					t.Conv(rest[i], &sb)
 					i++
@@ -65,21 +66,22 @@ func exprFromArgs(args ...interface{}) *expr {
 	}
 }
 
-func Expr(args ...interface{}) ExprBuilder {
+func (b *Batch) Expr(args ...interface{}) ExprBuilder {
 	if len(args) == 0 {
-		return ExprBuilder{}
+		return ExprBuilder{b: b}
 	}
-	return ExprBuilder{exprFromArgs(args...)}
+	return ExprBuilder{b: b, root: exprFromArgs(b, args...)}
 }
 
 func (eb ExprBuilder) And(args ...interface{}) ExprBuilder {
 	if eb.root == nil {
-		return ExprBuilder{exprFromArgs(args...)}
+		return ExprBuilder{b: eb.b, root: exprFromArgs(eb.b, args...)}
 	}
 	return ExprBuilder{
+		b: eb.b,
 		root: &expr{
 			a:    eb.root,
-			b:    exprFromArgs(args...),
+			b:    exprFromArgs(eb.b, args...),
 			kind: exprAnd,
 		},
 	}
@@ -87,12 +89,13 @@ func (eb ExprBuilder) And(args ...interface{}) ExprBuilder {
 
 func (eb ExprBuilder) Or(args ...interface{}) ExprBuilder {
 	if eb.root == nil {
-		return ExprBuilder{exprFromArgs(args...)}
+		return ExprBuilder{b: eb.b, root: exprFromArgs(eb.b, args...)}
 	}
 	return ExprBuilder{
+		b: eb.b,
 		root: &expr{
 			a:    eb.root,
-			b:    exprFromArgs(args...),
+			b:    exprFromArgs(eb.b, args...),
 			kind: exprOr,
 		},
 	}

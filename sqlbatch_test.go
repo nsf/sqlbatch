@@ -473,12 +473,13 @@ func TestCreatedUpdated(t *testing.T) {
 		UpdatedAt time.Time `db:"updated"`
 	}
 
-	TimeNowFunc = func() time.Time { return rfc3339ToTime("2012-12-12T12:12:12Z") }
 	b1 := New()
+	b1.SetTimeNowFunc(func() time.Time { return rfc3339ToTime("2012-12-12T12:12:12Z") })
 	b1.Insert(&CreatedUpdated{ID: 1})
 	assertStringEquals(t, b1.String(),
 		`INSERT INTO "created_updated" ("id", "created_at", "updated_at") VALUES (1, TIMESTAMP '2012-12-12 12:12:12', TIMESTAMP '2012-12-12 12:12:12') RETURNING NOTHING`)
 	b2 := New()
+	b2.SetTimeNowFunc(func() time.Time { return rfc3339ToTime("2012-12-12T12:12:12Z") })
 	b2.Update(&CreatedUpdated{ID: 1})
 	assertStringEquals(t, b2.String(),
 		`UPDATE "created_updated" SET "created_at" = TIMESTAMP '0001-01-01 00:00:00', "updated_at" = TIMESTAMP '2012-12-12 12:12:12' WHERE "id" = 1 RETURNING NOTHING`)
@@ -496,26 +497,26 @@ func TestGet(t *testing.T) {
 
 	{
 		b := New()
-		b.Select(Q(&out1).Where("id = ?", 1))
-		b.Select(Q(&out2).Where("id = ?", 2))
+		b.Select(b.Q(&out1).Where("id = ?", 1))
+		b.Select(b.Q(&out2).Where("id = ?", 2))
 		assertStringEquals(t, b.String(),
 			`SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 1 LIMIT 1; SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 2 LIMIT 1`)
 	}
 	{
 		b := New()
-		b.Select(Q(&out1))
+		b.Select(b.Q(&out1))
 		assertStringEquals(t, b.String(),
 			`SELECT "id", "created_at", "updated_at" FROM "created_updated" LIMIT 1`)
 	}
 	{
 		b := New()
-		b.Select(Q(&out1).Where("id = ?", 1).OrderBy("created_at", false).Limit(10))
+		b.Select(b.Q(&out1).Where("id = ?", 1).OrderBy("created_at", false).Limit(10))
 		assertStringEquals(t, b.String(),
 			`SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 1 ORDER BY "created_at" DESC LIMIT 1`)
 	}
 	{
 		b := New()
-		b.Select(Q(&out3).Where("id = ?", 1).OrderBy("created_at", false).Limit(10))
+		b.Select(b.Q(&out3).Where("id = ?", 1).OrderBy("created_at", false).Limit(10))
 		assertStringEquals(t, b.String(),
 			`SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 1 ORDER BY "created_at" DESC LIMIT 10`)
 	}
@@ -577,9 +578,9 @@ func TestQuery(t *testing.T) {
 		)
 		b := New()
 		b.Select(
-			Q(&out3).Where("id > ?", 1).OrderBy("id", false),
-			Q(&out1).Where("id = ?", 1).Limit(1),
-			Q(&out2).OrderBy("id", true),
+			b.Q(&out3).Where("id > ?", 1).OrderBy("id", false),
+			b.Q(&out1).Where("id = ?", 1).Limit(1),
+			b.Q(&out2).OrderBy("id", true),
 		)
 		t.Log(b.String())
 		if err := b.Query(context.Background(), db); err != nil {
@@ -642,9 +643,10 @@ func TestArrayInWhereExpr(t *testing.T) {
 	}
 	{
 		var out []TestArr
-		b := New().Select(
-			Q(&out).Where("id in (?)", []int64{1, 2, 3}),
-			Q(&out).Where("a in (?)", []string{"one", "two"}),
+		b := New()
+		b.Select(
+			b.Q(&out).Where("id in (?)", []int64{1, 2, 3}),
+			b.Q(&out).Where("a in (?)", []string{"one", "two"}),
 		)
 		assertStringEquals(t, b.String(), `SELECT "id", "a" FROM "test_arr" WHERE id in (1, 2, 3); SELECT "id", "a" FROM "test_arr" WHERE a in ('one', 'two')`)
 		if err := b.Query(context.Background(), db); err != nil {
@@ -698,10 +700,11 @@ func TestEmptyResults(t *testing.T) {
 			outb []TestB
 			outc []TestC
 		)
-		b := New().Select(
-			Q(&outa),
-			Q(&outb),
-			Q(&outc),
+		b := New()
+		b.Select(
+			b.Q(&outa),
+			b.Q(&outb),
+			b.Q(&outc),
 		)
 		if err := b.Query(context.Background(), db); err != nil {
 			t.Fatal(err)
