@@ -101,7 +101,7 @@ func (q *QBuilder) WriteTo(sb *strings.Builder, si *StructInfo) {
 			sb.WriteString(" DESC")
 		}
 		if i != len(q.orderByFields)-1 {
-			sb.WriteString(" ")
+			sb.WriteString(", ")
 		}
 	}
 
