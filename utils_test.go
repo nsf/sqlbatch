@@ -23,7 +23,7 @@ func rfc3339NanoToTime(v string) time.Time {
 }
 
 func openTestDBConnection(t *testing.T) *sql.DB {
-	db, err := sql.Open("postgres", "host=127.0.0.1 port=26257 user=root dbname=test sslmode=disable binary_parameters=yes")
+	db, err := sql.Open("postgres", "host=127.0.0.1 port=26257 user=root dbname=test sslmode=disable")
 	if err != nil {
 		t.Fatalf("db connection error: %s", err)
 	}

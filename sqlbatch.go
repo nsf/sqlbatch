@@ -229,12 +229,34 @@ func (b *Batch) Exec(ctx context.Context, conn *sql.DB) error {
 
 var ErrNotFound = errors.New("not found")
 
+var select1HackFailure = errors.New("SELECT 1 hack failure")
+
+func skipSelectOneHack(rows *sql.Rows) error {
+	gotNext := rows.Next()
+	if !gotNext {
+		return select1HackFailure
+	}
+	gotNext = rows.Next()
+	if gotNext {
+		return select1HackFailure
+	}
+	moreSets := rows.NextResultSet()
+	if !moreSets {
+		return select1HackFailure
+	}
+	return nil
+}
+
 func (b *Batch) Query(ctx context.Context, conn *sql.DB) error {
-	rows, err := conn.QueryContext(ctx, b.String())
+	rows, err := conn.QueryContext(ctx, "SELECT 1; "+b.String())
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
+
+	if err := skipSelectOneHack(rows); err != nil {
+		return err
+	}
 
 	var ptrs []interface{}
 	for _, r := range b.readIntos {
@@ -245,7 +267,11 @@ func (b *Batch) Query(ctx context.Context, conn *sql.DB) error {
 		if r.slice {
 			val := r.val.Elem() // get the slice itself
 			idx := 0
-			for rows.Next() {
+			for {
+				gotNext := rows.Next()
+				if !gotNext {
+					break
+				}
 				if idx >= val.Cap() {
 					newCap := val.Cap() * 2
 					if idx >= newCap {
@@ -286,7 +312,8 @@ func (b *Batch) Query(ctx context.Context, conn *sql.DB) error {
 				}
 			}
 		}
-		if !rows.NextResultSet() {
+		moreSets := rows.NextResultSet()
+		if !moreSets {
 			break
 		}
 	}

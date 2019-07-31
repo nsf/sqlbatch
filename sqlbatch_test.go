@@ -652,3 +652,62 @@ func TestArrayInWhereExpr(t *testing.T) {
 		}
 	}
 }
+
+func TestEmptyResults(t *testing.T) {
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "test_a";
+		CREATE TABLE "test_a" (
+			id INT NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (id ASC)
+		);
+		DROP TABLE IF EXISTS "test_b";
+		CREATE TABLE "test_b" (
+			id INT NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (id ASC)
+		);
+		DROP TABLE IF EXISTS "test_c";
+		CREATE TABLE "test_c" (
+			id INT NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (id ASC)
+		);
+	`)
+	type TestA struct {
+		ID int64 `db:"primary_key"`
+	}
+	type TestB struct {
+		ID int64 `db:"primary_key"`
+	}
+	type TestC struct {
+		ID int64 `db:"primary_key"`
+	}
+	{
+		b := New()
+		b.Insert(&TestC{ID: 1})
+		b.Insert(&TestC{ID: 2})
+		b.Insert(&TestC{ID: 3})
+		if err := b.Exec(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	{
+		var (
+			outa []TestA
+			outb []TestB
+			outc []TestC
+		)
+		b := New().Select(
+			Q(&outa),
+			Q(&outb),
+			Q(&outc),
+		)
+		if err := b.Query(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+		if len(outa) != 0 || len(outb) != 0 || len(outc) != 3 {
+			t.Errorf("expected length of third to be 3, got: %d %d %d", len(outa), len(outb), len(outc))
+		}
+	}
+}
