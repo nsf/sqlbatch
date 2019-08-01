@@ -714,3 +714,14 @@ func TestEmptyResults(t *testing.T) {
 		}
 	}
 }
+
+func TestCustomTable(t *testing.T) {
+	type Foo struct {
+		A int
+		B int
+	}
+	var out Foo
+	b := New()
+	b.Select(b.Q(&out).Table("bar"))
+	assertStringEquals(t, b.String(), `SELECT "a", "b" FROM "bar" LIMIT 1`)
+}

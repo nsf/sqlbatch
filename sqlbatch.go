@@ -225,7 +225,12 @@ func (b *Batch) Select(qs ...*QBuilder) *Batch {
 			fieldNamesWriter.WriteString(f.QuotedName)
 		}
 		sb.WriteString(" FROM ")
-		sb.WriteString(si.QuotedName)
+		if q.quotedTable != "" {
+			sb.WriteString(q.quotedTable)
+		} else {
+			sb.WriteString(si.QuotedName)
+		}
+
 		q.setImplicitLimit(isSlice)
 		q.WriteTo(sb, si)
 	}

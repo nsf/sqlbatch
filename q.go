@@ -1,6 +1,7 @@
 package sqlbatch
 
 import (
+	"github.com/lib/pq"
 	"strings"
 )
 
@@ -19,6 +20,7 @@ type QBuilder struct {
 	offsetDefined bool
 	orderByFields []orderByField
 	errp          *error
+	quotedTable   string
 }
 
 func (b *Batch) Q(into ...interface{}) *QBuilder {
@@ -37,6 +39,11 @@ func (q *QBuilder) setImplicitLimit(isSlice bool) {
 		q.limit = 1
 		q.limitDefined = true
 	}
+}
+
+func (q *QBuilder) Table(v string) *QBuilder {
+	q.quotedTable = pq.QuoteIdentifier(v)
+	return q
 }
 
 func (q *QBuilder) Into(v interface{}) *QBuilder {
