@@ -2,6 +2,7 @@ package sqlbatch
 
 import (
 	"github.com/lib/pq"
+	"regexp"
 	"strings"
 )
 
@@ -21,6 +22,8 @@ type QBuilder struct {
 	orderByFields []orderByField
 	errp          *error
 	quotedTable   string
+	raw           ExprBuilder
+	rawDefined    bool
 }
 
 func (b *Batch) Q(into ...interface{}) *QBuilder {
@@ -32,6 +35,12 @@ func (b *Batch) Q(into ...interface{}) *QBuilder {
 		intoVal = into[0]
 	}
 	return &QBuilder{b: b, into: intoVal}
+}
+
+func (q *QBuilder) Raw(args ...interface{}) *QBuilder {
+	q.raw = q.b.Expr(args...)
+	q.rawDefined = true
+	return q
 }
 
 func (q *QBuilder) setImplicitLimit(isSlice bool) {
@@ -79,6 +88,39 @@ func (q *QBuilder) OrderBy(field string, asc bool) *QBuilder {
 func (q *QBuilder) WithErr(errp *error) *QBuilder {
 	q.errp = errp
 	return q
+}
+
+func (q *QBuilder) quotedTableName(si *StructInfo) string {
+	if q.quotedTable != "" {
+		return q.quotedTable
+	} else {
+		return si.QuotedName
+	}
+}
+
+var specialRegexp = regexp.MustCompile(`:[a-z]+:`)
+
+func (q *QBuilder) writeRawTo(sb *strings.Builder, si *StructInfo) {
+	var tmp strings.Builder
+	q.raw.WriteTo(&tmp)
+	sb.WriteString(specialRegexp.ReplaceAllStringFunc(tmp.String(), func(v string) string {
+		if len(v) < 2 {
+			return v
+		}
+		v = v[1 : len(v)-1]
+		if v == "columns" {
+			var sb strings.Builder
+			fieldNamesWriter := newListWriter(&sb)
+			for _, f := range si.Fields {
+				fieldNamesWriter.WriteString(f.QuotedName)
+			}
+			return sb.String()
+		} else if v == "table" {
+			return q.quotedTableName(si)
+		} else {
+			return v
+		}
+	}))
 }
 
 func (q *QBuilder) WriteTo(sb *strings.Builder, si *StructInfo) {

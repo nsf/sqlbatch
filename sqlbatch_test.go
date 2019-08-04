@@ -725,3 +725,14 @@ func TestCustomTable(t *testing.T) {
 	b.Select(b.Q(&out).Table("bar"))
 	assertStringEquals(t, b.String(), `SELECT "a", "b" FROM "bar" LIMIT 1`)
 }
+
+func TestQRaw(t *testing.T) {
+	type Foo struct {
+		A int
+		B int
+	}
+	var out Foo
+	b := New()
+	b.Select(b.Q(&out).Raw(`SELECT :columns: FROM :table: WHERE a = ? AND b = ?`, 5, 10))
+	assertStringEquals(t, b.String(), `SELECT "a", "b" FROM "foo" WHERE a = 5 AND b = 10`)
+}

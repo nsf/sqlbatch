@@ -219,20 +219,20 @@ func (b *Batch) Select(qs ...*QBuilder) *Batch {
 		})
 
 		sb := b.beginNextStmt()
-		sb.WriteString("SELECT ")
-		fieldNamesWriter := newListWriter(sb)
-		for _, f := range si.Fields {
-			fieldNamesWriter.WriteString(f.QuotedName)
-		}
-		sb.WriteString(" FROM ")
-		if q.quotedTable != "" {
-			sb.WriteString(q.quotedTable)
+		if q.rawDefined {
+			q.writeRawTo(sb, si)
 		} else {
-			sb.WriteString(si.QuotedName)
-		}
+			sb.WriteString("SELECT ")
+			fieldNamesWriter := newListWriter(sb)
+			for _, f := range si.Fields {
+				fieldNamesWriter.WriteString(f.QuotedName)
+			}
+			sb.WriteString(" FROM ")
+			sb.WriteString(q.quotedTableName(si))
 
-		q.setImplicitLimit(isSlice)
-		q.WriteTo(sb, si)
+			q.setImplicitLimit(isSlice)
+			q.WriteTo(sb, si)
+		}
 	}
 	return b
 }
