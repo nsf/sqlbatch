@@ -24,6 +24,7 @@ type QBuilder struct {
 	quotedTable   string
 	raw           ExprBuilder
 	rawDefined    bool
+	prefix        string
 }
 
 func (b *Batch) Q(into ...interface{}) *QBuilder {
@@ -35,6 +36,11 @@ func (b *Batch) Q(into ...interface{}) *QBuilder {
 		intoVal = into[0]
 	}
 	return &QBuilder{b: b, into: intoVal}
+}
+
+func (q *QBuilder) Prefix(prefix string) *QBuilder {
+	q.prefix = prefix
+	return q
 }
 
 func (q *QBuilder) Raw(args ...interface{}) *QBuilder {
@@ -91,10 +97,22 @@ func (q *QBuilder) WithErr(errp *error) *QBuilder {
 }
 
 func (q *QBuilder) quotedTableName(si *StructInfo) string {
+	tname := si.QuotedName
 	if q.quotedTable != "" {
-		return q.quotedTable
+		tname = q.quotedTable
+	}
+
+	if q.prefix != "" {
+		return tname + " AS " + q.prefix
+	}
+	return tname
+}
+
+func (q *QBuilder) prefixedFieldName(name string) string {
+	if q.prefix != "" {
+		return q.prefix + "." + name
 	} else {
-		return si.QuotedName
+		return name
 	}
 }
 
@@ -112,7 +130,7 @@ func (q *QBuilder) writeRawTo(sb *strings.Builder, si *StructInfo) {
 			var sb strings.Builder
 			fieldNamesWriter := newListWriter(&sb)
 			for _, f := range si.Fields {
-				fieldNamesWriter.WriteString(f.QuotedName)
+				fieldNamesWriter.WriteString(q.prefixedFieldName(f.QuotedName))
 			}
 			return sb.String()
 		} else if v == "table" {

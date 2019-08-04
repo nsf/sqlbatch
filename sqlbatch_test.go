@@ -736,3 +736,14 @@ func TestQRaw(t *testing.T) {
 	b.Select(b.Q(&out).Raw(`SELECT :columns: FROM :table: WHERE a = ? AND b = ?`, 5, 10))
 	assertStringEquals(t, b.String(), `SELECT "a", "b" FROM "foo" WHERE a = 5 AND b = 10`)
 }
+
+func TestQRawPrefix(t *testing.T) {
+	type Foo struct {
+		A int
+		B int
+	}
+	var out Foo
+	b := New()
+	b.Select(b.Q(&out).Prefix("t").Raw(`SELECT :columns: FROM :table: WHERE a = ? AND b = ?`, 5, 10))
+	assertStringEquals(t, b.String(), `SELECT t."a", t."b" FROM "foo" AS t WHERE a = 5 AND b = 10`)
+}
