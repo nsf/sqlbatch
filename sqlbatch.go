@@ -158,6 +158,27 @@ func (b *Batch) Insert(v interface{}) *Batch {
 	return b
 }
 
+func (b *Batch) Upsert(v interface{}) *Batch {
+	structVal := reflect.ValueOf(v)
+	t := assertPointerToStruct(structVal.Type())
+
+	ptr := unsafe.Pointer(structVal.Pointer())
+	si := GetStructInfo(t, b.customResolver())
+
+	sb := b.beginNextStmt()
+	sb.WriteString("UPSERT INTO ")
+	sb.WriteString(si.QuotedName)
+	sb.WriteString(" (")
+	fieldNamesWriter := newListWriter(sb)
+	for _, f := range si.Fields {
+		fieldNamesWriter.WriteString(f.QuotedName)
+	}
+	sb.WriteString(") VALUES (")
+	writeFieldValues(si, ptr, sb, b.timeNow())
+	sb.WriteString(") RETURNING NOTHING")
+	return b
+}
+
 func (b *Batch) Update(v interface{}) *Batch {
 	structVal := reflect.ValueOf(v)
 	t := assertPointerToStruct(structVal.Type())

@@ -747,3 +747,13 @@ func TestQRawPrefix(t *testing.T) {
 	b.Select(b.Q(&out).Prefix("t").Raw(`SELECT :columns: FROM :table: WHERE a = ? AND b = ?`, 5, 10))
 	assertStringEquals(t, b.String(), `SELECT t."a", t."b" FROM "foo" AS t WHERE a = 5 AND b = 10`)
 }
+
+func TestUpsert(t *testing.T) {
+	type Foo struct {
+		A int
+		B int
+	}
+	b := New()
+	b.Upsert(&Foo{1, 2})
+	assertStringEquals(t, b.String(), `UPSERT INTO "foo" ("a", "b") VALUES (1, 2) RETURNING NOTHING`)
+}
