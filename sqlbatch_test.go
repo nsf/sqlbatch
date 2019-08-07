@@ -757,3 +757,9 @@ func TestUpsert(t *testing.T) {
 	b.Upsert(&Foo{1, 2})
 	assertStringEquals(t, b.String(), `UPSERT INTO "foo" ("a", "b") VALUES (1, 2) RETURNING NOTHING`)
 }
+
+func TestRaw(t *testing.T) {
+	b := New()
+	b.Raw("DELETE FROM foo WHERE bar = ?", 1)
+	assertStringEquals(t, b.String(), `DELETE FROM foo WHERE bar = 1`)
+}

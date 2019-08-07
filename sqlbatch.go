@@ -137,6 +137,12 @@ func (b *Batch) SetCustomFieldInterfaceResolver(f FieldInterfaceResolver) *Batch
 	return b
 }
 
+func (b *Batch) Raw(args ...interface{}) *Batch {
+	sb := b.beginNextStmt()
+	b.Expr(args...).WriteTo(sb)
+	return b
+}
+
 func (b *Batch) Insert(v interface{}) *Batch {
 	structVal := reflect.ValueOf(v)
 	t := assertPointerToStruct(structVal.Type())
