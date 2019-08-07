@@ -258,7 +258,15 @@ func (b *Batch) Select(qs ...*QBuilder) *Batch {
 	return b
 }
 
-func (b *Batch) Exec(ctx context.Context, conn *sql.DB) error {
+type ExecContexter interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
+type QueryContexter interface {
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+}
+
+func (b *Batch) Exec(ctx context.Context, conn ExecContexter) error {
 	_, err := conn.ExecContext(ctx, b.String())
 	return err
 }
@@ -283,7 +291,7 @@ func skipSelectOneHack(rows *sql.Rows) error {
 	return nil
 }
 
-func (b *Batch) Query(ctx context.Context, conn *sql.DB) error {
+func (b *Batch) Query(ctx context.Context, conn QueryContexter) error {
 	rows, err := conn.QueryContext(ctx, "SELECT 1; "+b.String())
 	if err != nil {
 		return err
