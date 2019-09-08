@@ -11,7 +11,7 @@ func TestBulkInserterAdd(t *testing.T) {
 		B  int
 	}
 	b := New()
-	b.WithBulkInserter(func(bulk *BulkInserter) {
+	b.WithBulkInserter(func(bulk *BulkSerter) {
 		for i := 0; i < 3; i++ {
 			bulk.Add(&TestStruct{ID: int64(i), A: i, B: i})
 		}
@@ -26,7 +26,7 @@ func TestBulkInserterAddMany(t *testing.T) {
 		B  int
 	}
 	b := New()
-	b.BulkInsert([]TestStruct{
+	b.Insert([]TestStruct{
 		{ID: 1, A: 111, B: 1111},
 		{ID: 2, A: 222, B: 2222},
 		{ID: 3, A: 333, B: 3333},

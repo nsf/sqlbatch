@@ -49,6 +49,27 @@ func assertPointerToStruct(t reflect.Type) reflect.Type {
 
 func assertPointerToStructOrSliceOfStructs(t reflect.Type) (reflect.Type, bool) {
 	isSlice := false
+	switch t.Kind() {
+	case reflect.Ptr:
+		t = t.Elem()
+		switch t.Kind() {
+		case reflect.Struct:
+			// do nothing
+		default:
+			panic("pointer to struct or slice of structs expected")
+		}
+	case reflect.Slice:
+		isSlice = true
+		t = t.Elem()
+		if t.Kind() != reflect.Struct {
+			panic("pointer to struct or slice of structs expected")
+		}
+	}
+	return t, isSlice
+}
+
+func assertPointerToStructOrPointerToSliceOfStructs(t reflect.Type) (reflect.Type, bool) {
+	isSlice := false
 	if t.Kind() != reflect.Ptr {
 		panic("pointer to struct or pointer to slice of structs expected")
 	}
@@ -75,7 +96,7 @@ func assertHasPrimaryKeys(si *StructInfo) {
 }
 
 func writePrimaryKeysWhereCondition(si *StructInfo, ptr unsafe.Pointer, sb *strings.Builder) {
-	pkWriter := newListWriter(sb)
+	pkWriter := newAndWriter(sb)
 	for _, f := range si.PrimaryKeys {
 		b := pkWriter.Next()
 		b.WriteString(f.QuotedName)
@@ -145,7 +166,10 @@ func (b *Batch) Raw(args ...interface{}) *Batch {
 
 func (b *Batch) Insert(v interface{}) *Batch {
 	structVal := reflect.ValueOf(v)
-	t := assertPointerToStruct(structVal.Type())
+	t, isSlice := assertPointerToStructOrSliceOfStructs(structVal.Type())
+	if isSlice {
+		return b.BulkInsert(v)
+	}
 
 	ptr := unsafe.Pointer(structVal.Pointer())
 	si := GetStructInfo(t, b.customResolver())
@@ -166,7 +190,10 @@ func (b *Batch) Insert(v interface{}) *Batch {
 
 func (b *Batch) Upsert(v interface{}) *Batch {
 	structVal := reflect.ValueOf(v)
-	t := assertPointerToStruct(structVal.Type())
+	t, isSlice := assertPointerToStructOrSliceOfStructs(structVal.Type())
+	if isSlice {
+		return b.BulkUpsert(v)
+	}
 
 	ptr := unsafe.Pointer(structVal.Pointer())
 	si := GetStructInfo(t, b.customResolver())
@@ -234,7 +261,7 @@ func (b *Batch) Select(qs ...*QBuilder) *Batch {
 			panic("make sure to call Q().Into(&v) before submitting the Q")
 		}
 		val := reflect.ValueOf(q.into)
-		t, isSlice := assertPointerToStructOrSliceOfStructs(val.Type())
+		t, isSlice := assertPointerToStructOrPointerToSliceOfStructs(val.Type())
 
 		si := GetStructInfo(t, b.customResolver())
 		b.readIntos = append(b.readIntos, readInto{

@@ -6,15 +6,17 @@ import (
 	"unsafe"
 )
 
-type BulkInserter struct {
+// Bulk (in)serter or (up)serter
+type BulkSerter struct {
 	nestedBuilder
+	command string // INSERT or UPSERT
 	builder strings.Builder
 	si      *StructInfo
 }
 
-func (b *BulkInserter) writeHeader() {
+func (b *BulkSerter) writeHeader() {
 	sb := &b.builder
-	sb.WriteString("INSERT INTO ")
+	sb.WriteString(b.command + " INTO ")
 	sb.WriteString(b.si.QuotedName)
 	sb.WriteString(" (")
 	fieldNamesWriter := newListWriter(sb)
@@ -24,7 +26,7 @@ func (b *BulkInserter) writeHeader() {
 	sb.WriteString(") VALUES ")
 }
 
-func (b *BulkInserter) AddMany(v interface{}) *BulkInserter {
+func (b *BulkSerter) AddMany(v interface{}) *BulkSerter {
 	b.assertNotCommitted()
 
 	sliceVal := reflect.ValueOf(v)
@@ -40,7 +42,7 @@ func (b *BulkInserter) AddMany(v interface{}) *BulkInserter {
 	si := GetStructInfo(t, b.b.customFieldInterfaceResolver)
 
 	if b.si != nil && b.si != si {
-		panic("mismatching struct type on subsequent BulkInserter method calls")
+		panic("mismatching struct type on subsequent BulkSerter method calls")
 	}
 
 	sb := &b.builder
@@ -63,7 +65,7 @@ func (b *BulkInserter) AddMany(v interface{}) *BulkInserter {
 	return b
 }
 
-func (b *BulkInserter) Add(v interface{}) *BulkInserter {
+func (b *BulkSerter) Add(v interface{}) *BulkSerter {
 	b.assertNotCommitted()
 
 	structVal := reflect.ValueOf(v)
@@ -73,7 +75,7 @@ func (b *BulkInserter) Add(v interface{}) *BulkInserter {
 	si := GetStructInfo(t, b.b.customFieldInterfaceResolver)
 
 	if b.si != nil && b.si != si {
-		panic("mismatching struct type on subsequent BulkInserter method calls")
+		panic("mismatching struct type on subsequent BulkSerter method calls")
 	}
 
 	sb := &b.builder
@@ -91,7 +93,7 @@ func (b *BulkInserter) Add(v interface{}) *BulkInserter {
 	return b
 }
 
-func (b *BulkInserter) Commit() *Batch {
+func (b *BulkSerter) Commit() *Batch {
 	b.assertNotCommitted()
 
 	b.builder.WriteString(" RETURNING NOTHING")
@@ -102,11 +104,11 @@ func (b *BulkInserter) Commit() *Batch {
 	return b.b
 }
 
-func (b *Batch) BulkInserter() *BulkInserter {
-	return &BulkInserter{nestedBuilder: b.allocateNestedBuilder("BulkInserter")}
+func (b *Batch) BulkInserter() *BulkSerter {
+	return &BulkSerter{command: "INSERT", nestedBuilder: b.allocateNestedBuilder("BulkInserter")}
 }
 
-func (b *Batch) WithBulkInserter(cb func(bulk *BulkInserter)) *Batch {
+func (b *Batch) WithBulkInserter(cb func(bulk *BulkSerter)) *Batch {
 	bulk := b.BulkInserter()
 	cb(bulk)
 	bulk.Commit()
@@ -115,4 +117,19 @@ func (b *Batch) WithBulkInserter(cb func(bulk *BulkInserter)) *Batch {
 
 func (b *Batch) BulkInsert(v interface{}) *Batch {
 	return b.BulkInserter().AddMany(v).Commit()
+}
+
+func (b *Batch) BulkUpserter() *BulkSerter {
+	return &BulkSerter{command: "UPSERT", nestedBuilder: b.allocateNestedBuilder("BulkUpserter")}
+}
+
+func (b *Batch) WithBulkUpserter(cb func(bulk *BulkSerter)) *Batch {
+	bulk := b.BulkUpserter()
+	cb(bulk)
+	bulk.Commit()
+	return b
+}
+
+func (b *Batch) BulkUpsert(v interface{}) *Batch {
+	return b.BulkUpserter().AddMany(v).Commit()
 }
