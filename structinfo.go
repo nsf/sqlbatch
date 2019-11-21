@@ -27,6 +27,7 @@ type StructInfo struct {
 	//   `db:"group:bar"`              - for embedded structs, assign it to a group
 	//   `db:"created"`                - must be time.Time or pq.NullTime, value assigned on Insert()
 	//   `db:"updated"`                - must be time.Time or pq.NullTime, value assigned on Update()
+	//   `db:"default"`                - override field value to DEFAULT on INSERT
 	Fields         []FieldInfo
 	PrimaryKeys    []*FieldInfo
 	NonPrimaryKeys []*FieldInfo
@@ -386,6 +387,9 @@ func scanStructImpl(t reflect.Type, ctx *scanStructCtx) *StructInfo {
 			}
 			if ti.isUpdated {
 				flags |= FieldInfoIsUpdated
+			}
+			if ti.isDefault {
+				flags |= FieldInfoIsDefault
 			}
 			if isTypeNull(f.Type) {
 				flags |= FieldInfoIsNull

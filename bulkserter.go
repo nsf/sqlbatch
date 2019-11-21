@@ -53,9 +53,10 @@ func (b *BulkSerter) AddMany(v interface{}) *BulkSerter {
 		sb.WriteString(", ")
 	}
 
+	insert := b.command == "INSERT"
 	for i := 0; i < sliceLen; i++ {
 		sb.WriteString("(")
-		writeFieldValues(si, ptr, sb, b.b.timeNow())
+		writeFieldValues(si, ptr, sb, b.b.timeNow(), insert)
 		sb.WriteString(")")
 		if i != sliceLen-1 {
 			sb.WriteString(", ")
@@ -88,7 +89,7 @@ func (b *BulkSerter) Add(v interface{}) *BulkSerter {
 	}
 
 	sb.WriteString("(")
-	writeFieldValues(si, ptr, sb, b.b.timeNow())
+	writeFieldValues(si, ptr, sb, b.b.timeNow(), b.command == "INSERT")
 	sb.WriteString(")")
 	return b
 }

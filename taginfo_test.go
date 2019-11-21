@@ -13,6 +13,7 @@ func TestTagParse(t *testing.T) {
 		{"", tagInfo{}},
 		{"primary_key", tagInfo{primaryKey: true}},
 		{"foo", tagInfo{}},
+		{"default", tagInfo{isDefault: true}},
 		{"-", tagInfo{ignore: true}},
 		{"column:foo", tagInfo{name: "foo"}},
 		{"group:bar", tagInfo{group: "bar"}},

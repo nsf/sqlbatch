@@ -24,6 +24,7 @@ const (
 	FieldInfoIsUpdated
 	FieldInfoIsPrimaryKey
 	FieldInfoIsNull
+	FieldInfoIsDefault
 )
 
 type FieldInfo struct {
@@ -39,3 +40,4 @@ func (f *FieldInfo) IsPrimaryKey() bool { return f.flags&FieldInfoIsPrimaryKey !
 func (f *FieldInfo) IsCreated() bool    { return f.flags&FieldInfoIsCreated != 0 }
 func (f *FieldInfo) IsUpdated() bool    { return f.flags&FieldInfoIsUpdated != 0 }
 func (f *FieldInfo) IsNull() bool       { return f.flags&FieldInfoIsNull != 0 }
+func (f *FieldInfo) IsDefault() bool    { return f.flags&FieldInfoIsDefault != 0 }

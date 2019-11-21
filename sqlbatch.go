@@ -114,13 +114,18 @@ func writePrimaryKeysWhereCondition(si *StructInfo, ptr unsafe.Pointer, sb *stri
 	sb.WriteString(" RETURNING NOTHING")
 }
 
-func writeFieldValues(si *StructInfo, ptr unsafe.Pointer, sb *strings.Builder, now time.Time) {
+func writeFieldValues(si *StructInfo, ptr unsafe.Pointer, sb *strings.Builder, now time.Time, insert bool) {
 	fieldValuesWriter := newListWriter(sb)
 	for _, f := range si.Fields {
 		if f.IsCreated() || f.IsUpdated() {
 			setTime(&f, ptr, now)
 		}
-		f.Interface.Write(ptr, fieldValuesWriter.Next())
+		if insert && f.IsDefault() {
+			sb := fieldValuesWriter.Next()
+			sb.WriteString("DEFAULT")
+		} else {
+			f.Interface.Write(ptr, fieldValuesWriter.Next())
+		}
 	}
 }
 
@@ -203,7 +208,7 @@ func (b *Batch) InsertInto(v interface{}, table string) *Batch {
 		fieldNamesWriter.WriteString(f.QuotedName)
 	}
 	sb.WriteString(") VALUES (")
-	writeFieldValues(si, ptr, sb, b.timeNow())
+	writeFieldValues(si, ptr, sb, b.timeNow(), true)
 	sb.WriteString(") RETURNING NOTHING")
 	return b
 }
@@ -231,7 +236,7 @@ func (b *Batch) UpsertInto(v interface{}, table string) *Batch {
 		fieldNamesWriter.WriteString(f.QuotedName)
 	}
 	sb.WriteString(") VALUES (")
-	writeFieldValues(si, ptr, sb, b.timeNow())
+	writeFieldValues(si, ptr, sb, b.timeNow(), false)
 	sb.WriteString(") RETURNING NOTHING")
 	return b
 }

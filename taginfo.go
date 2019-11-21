@@ -11,6 +11,7 @@ type tagInfo struct {
 	group      string
 	isCreated  bool
 	isUpdated  bool
+	isDefault  bool
 }
 
 func parseTag(t string) (out tagInfo) {
@@ -35,6 +36,8 @@ func parseTag(t string) (out tagInfo) {
 				out.isCreated = true
 			case "updated":
 				out.isUpdated = true
+			case "default":
+				out.isDefault = true
 			}
 		}
 	}

@@ -856,3 +856,43 @@ func TestGenericField(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDefaultField(t *testing.T) {
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "foo";
+		CREATE TABLE "foo" (
+			a INT NOT NULL DEFAULT unique_rowid(),
+			b INT NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (a ASC)
+		);
+	`)
+
+	type Foo struct {
+		A int `db:"primary_key,default"`
+		B int
+	}
+
+	b := New()
+	b.Insert(&Foo{123, 111})
+	b.Insert(&Foo{456, 222})
+	b.Upsert(&Foo{123, 333})
+	b.Upsert(&Foo{456, 444})
+	assertStringEquals(t, b.String(), `INSERT INTO "foo" ("a", "b") VALUES (DEFAULT, 111) RETURNING NOTHING; INSERT INTO "foo" ("a", "b") VALUES (DEFAULT, 222) RETURNING NOTHING; UPSERT INTO "foo" ("a", "b") VALUES (123, 333) RETURNING NOTHING; UPSERT INTO "foo" ("a", "b") VALUES (456, 444) RETURNING NOTHING`)
+	if err := b.Exec(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+
+	var foo []Foo
+	if err := New().QSelect(&foo).OrderBy("b", true).Query(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	assertDeepEquals(t, foo[0].B, 111)
+	assertDeepEquals(t, foo[1].B, 222)
+	assertDeepEquals(t, foo[2].B, 333)
+	assertDeepEquals(t, foo[3].B, 444)
+	assertDeepEquals(t, foo[2].A, 123)
+	assertDeepEquals(t, foo[3].A, 456)
+}
