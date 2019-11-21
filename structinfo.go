@@ -68,26 +68,14 @@ func resolveCustomFieldInterface(t reflect.Type, offset uintptr, custom FieldInt
 	}
 }
 
-var genericFieldInterfaceType = reflect.TypeOf((*GenericField)(nil)).Elem()
-
 func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolver) FieldInterface {
 	if iface, ok := resolveCustomFieldInterface(t, o, custom); ok {
 		return iface
-	}
-	if reflect.PtrTo(t).Implements(genericFieldInterfaceType) {
-		return FieldInterface{
-			Set:    makeGenericSetter(o, t),
-			Get:    makeGenericGetter(o, t),
-			GetPtr: makeGenericPtrGetter(o, t),
-			Write:  makeGenericWriter(o, t),
-			Conv:   genericConverter,
-		}
 	}
 	switch t.Kind() {
 	case reflect.Bool:
 		return FieldInterface{
 			Set:    makeBoolSetter(o),
-			Get:    makeBoolGetter(o),
 			GetPtr: makeBoolPtrGetter(o),
 			Write:  makeBoolWriter(o),
 			Conv:   boolConverter,
@@ -95,7 +83,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Int:
 		return FieldInterface{
 			Set:    makeIntSetter(o),
-			Get:    makeIntGetter(o),
 			GetPtr: makeIntPtrGetter(o),
 			Write:  makeIntWriter(o),
 			Conv:   intConverter,
@@ -103,7 +90,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Int8:
 		return FieldInterface{
 			Set:    makeInt8Setter(o),
-			Get:    makeInt8Getter(o),
 			GetPtr: makeInt8PtrGetter(o),
 			Write:  makeInt8Writer(o),
 			Conv:   int8Converter,
@@ -111,7 +97,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Int16:
 		return FieldInterface{
 			Set:    makeInt16Setter(o),
-			Get:    makeInt16Getter(o),
 			GetPtr: makeInt16PtrGetter(o),
 			Write:  makeInt16Writer(o),
 			Conv:   int16Converter,
@@ -119,7 +104,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Int32:
 		return FieldInterface{
 			Set:    makeInt32Setter(o),
-			Get:    makeInt32Getter(o),
 			GetPtr: makeInt32PtrGetter(o),
 			Write:  makeInt32Writer(o),
 			Conv:   int32Converter,
@@ -127,7 +111,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Int64:
 		return FieldInterface{
 			Set:    makeInt64Setter(o),
-			Get:    makeInt64Getter(o),
 			GetPtr: makeInt64PtrGetter(o),
 			Write:  makeInt64Writer(o),
 			Conv:   int64Converter,
@@ -135,7 +118,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Uint:
 		return FieldInterface{
 			Set:    makeUintSetter(o),
-			Get:    makeUintGetter(o),
 			GetPtr: makeUintPtrGetter(o),
 			Write:  makeUintWriter(o),
 			Conv:   uintConverter,
@@ -143,7 +125,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Uint8:
 		return FieldInterface{
 			Set:    makeUint8Setter(o),
-			Get:    makeUint8Getter(o),
 			GetPtr: makeUint8PtrGetter(o),
 			Write:  makeUint8Writer(o),
 			Conv:   uint8Converter,
@@ -151,7 +132,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Uint16:
 		return FieldInterface{
 			Set:    makeUint16Setter(o),
-			Get:    makeUint16Getter(o),
 			GetPtr: makeUint16PtrGetter(o),
 			Write:  makeUint16Writer(o),
 			Conv:   uint16Converter,
@@ -159,7 +139,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Uint32:
 		return FieldInterface{
 			Set:    makeUint32Setter(o),
-			Get:    makeUint32Getter(o),
 			GetPtr: makeUint32PtrGetter(o),
 			Write:  makeUint32Writer(o),
 			Conv:   uint32Converter,
@@ -167,7 +146,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Uint64:
 		return FieldInterface{
 			Set:    makeUint64Setter(o),
-			Get:    makeUint64Getter(o),
 			GetPtr: makeUint64PtrGetter(o),
 			Write:  makeUint64Writer(o),
 			Conv:   uint64Converter,
@@ -175,7 +153,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.String:
 		return FieldInterface{
 			Set:    makeStringSetter(o),
-			Get:    makeStringGetter(o),
 			GetPtr: makeStringPtrGetter(o),
 			Write:  makeStringWriter(o),
 			Conv:   stringConverter,
@@ -183,7 +160,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Float32:
 		return FieldInterface{
 			Set:    makeFloat32Setter(o),
-			Get:    makeFloat32Getter(o),
 			GetPtr: makeFloat32PtrGetter(o),
 			Write:  makeFloat32Writer(o),
 			Conv:   float32Converter,
@@ -191,7 +167,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 	case reflect.Float64:
 		return FieldInterface{
 			Set:    makeFloat64Setter(o),
-			Get:    makeFloat64Getter(o),
 			GetPtr: makeFloat64PtrGetter(o),
 			Write:  makeFloat64Writer(o),
 			Conv:   float64Converter,
@@ -201,7 +176,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 		case reflect.Uint8: // byte slice
 			return FieldInterface{
 				Set:    makeByteSliceSetter(o),
-				Get:    makeByteSliceGetter(o),
 				GetPtr: makeByteSlicePtrGetter(o),
 				Write:  makeByteSliceWriter(o),
 				Conv:   byteSliceConverter,
@@ -209,7 +183,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 		case reflect.Int64: // array of numbers
 			return FieldInterface{
 				Set:    makeInt64SliceSetter(o),
-				Get:    makeInt64SliceGetter(o),
 				GetPtr: makeInt64SlicePtrGetter(o),
 				Write:  makeInt64SliceWriter(o),
 				Conv:   int64SliceConverter,
@@ -217,7 +190,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 		case reflect.String: // array of strings
 			return FieldInterface{
 				Set:    makeStringSliceSetter(o),
-				Get:    makeStringSliceGetter(o),
 				GetPtr: makeStringSlicePtrGetter(o),
 				Write:  makeStringSliceWriter(o),
 				Conv:   stringSliceConverter,
@@ -227,7 +199,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 		if t == reflect.TypeOf(time.Time{}) {
 			return FieldInterface{
 				Set:    makeTimeSetter(o),
-				Get:    makeTimeGetter(o),
 				GetPtr: makeTimePtrGetter(o),
 				Write:  makeTimeWriter(o),
 				Conv:   timeConverter,
@@ -235,7 +206,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 		} else if t == reflect.TypeOf(sql.NullBool{}) {
 			return FieldInterface{
 				Set:    makeNullBoolSetter(o),
-				Get:    makeNullBoolGetter(o),
 				GetPtr: makeNullBoolPtrGetter(o),
 				Write:  makeNullBoolWriter(o),
 				Conv:   nullBoolConverter,
@@ -243,7 +213,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 		} else if t == reflect.TypeOf(sql.NullFloat64{}) {
 			return FieldInterface{
 				Set:    makeNullFloat64Setter(o),
-				Get:    makeNullFloat64Getter(o),
 				GetPtr: makeNullFloat64PtrGetter(o),
 				Write:  makeNullFloat64Writer(o),
 				Conv:   nullFloat64Converter,
@@ -251,7 +220,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 		} else if t == reflect.TypeOf(sql.NullInt64{}) {
 			return FieldInterface{
 				Set:    makeNullInt64Setter(o),
-				Get:    makeNullInt64Getter(o),
 				GetPtr: makeNullInt64PtrGetter(o),
 				Write:  makeNullInt64Writer(o),
 				Conv:   nullInt64Converter,
@@ -259,7 +227,6 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 		} else if t == reflect.TypeOf(sql.NullString{}) {
 			return FieldInterface{
 				Set:    makeNullStringSetter(o),
-				Get:    makeNullStringGetter(o),
 				GetPtr: makeNullStringPtrGetter(o),
 				Write:  makeNullStringWriter(o),
 				Conv:   nullStringConverter,
@@ -267,10 +234,17 @@ func makeInterfaceForType(t reflect.Type, o uintptr, custom FieldInterfaceResolv
 		} else if t == reflect.TypeOf(pq.NullTime{}) {
 			return FieldInterface{
 				Set:    makeNullTimeSetter(o),
-				Get:    makeNullTimeGetter(o),
 				GetPtr: makeNullTimePtrGetter(o),
 				Write:  makeNullTimeWriter(o),
 				Conv:   nullTimeConverter,
+			}
+		}
+	case reflect.Interface:
+		if t == reflect.TypeOf((*interface{})(nil)).Elem() {
+			return FieldInterface{
+				GetPtr: makeInterfacePtrGetter(o),
+				Write:  makeInterfaceWriter(o, custom),
+				Conv:   makeInterfaceConverter(custom),
 			}
 		}
 	}

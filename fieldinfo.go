@@ -6,23 +6,15 @@ import (
 	"unsafe"
 )
 
-type GenericField interface {
-	SqlbatchGet(ifacePtr *interface{})
-	SqlbatchGetPtr(ifacePtr *interface{})
-	SqlbatchSet(iface interface{})
-	SqlbatchWrite(b *strings.Builder)
-}
-
-type GenericFieldConv interface {
-	SqlbatchConv(b *strings.Builder)
-}
-
+// Set currently only used by time.Time for setting the time value implicitly
+// GetPtr is used when scanning Row result into struct field
+// Write is also used for expression formatting
+// Conv is used for expression formatting
 type FieldInterface struct {
-	Conv   func(iface interface{}, b *strings.Builder)
-	Get    func(structPtr unsafe.Pointer, ifacePtr *interface{})
-	GetPtr func(structPtr unsafe.Pointer, ifacePtr *interface{})
 	Set    func(structPtr unsafe.Pointer, iface interface{})
+	GetPtr func(structPtr unsafe.Pointer, ifacePtr *interface{})
 	Write  func(structPtr unsafe.Pointer, b *strings.Builder)
+	Conv   func(iface interface{}, b *strings.Builder)
 }
 
 type FieldInfoFlag uint32

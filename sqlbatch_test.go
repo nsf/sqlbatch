@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/lib/pq"
-	"github.com/nsf/sqlbatch/generic"
 	"math"
 	"reflect"
 	"testing"
@@ -379,8 +378,9 @@ func TestGetStructInfo(t *testing.T) {
 			t.Errorf("field %q name mismatch: %q != %q", f.Name, f.Name, name)
 		}
 
-		var fval interface{}
-		f.Interface.Get(ptr, &fval)
+		var pfval interface{}
+		f.Interface.GetPtr(ptr, &pfval)
+		fval := reflect.ValueOf(pfval).Elem().Interface()
 		if !reflect.DeepEqual(fval, val) {
 			t.Errorf("field %q value mismatch: %v != %v", f.Name, fval, val)
 		}
@@ -845,20 +845,14 @@ func TestGenericField(t *testing.T) {
 	`)
 
 	type Foo struct {
-		A generic.Int64
+		A interface{}
 		B int
 	}
 
 	b := New()
-	b.Insert(&Foo{generic.Int64(1), 111})
-	b.Insert(&Foo{generic.Int64(2), 222})
+	b.Insert(&Foo{int64(1), 111})
+	b.Insert(&Foo{int8(2), 222})
 	if err := b.ExecTransaction(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
-
-	var result Foo
-	if err := New().QSelect(&result).Where("a = ?", generic.Int64(2)).Query(context.Background(), db); err != nil {
-		t.Fatal(err)
-	}
-	assertDeepEquals(t, result, Foo{generic.Int64(2), 222})
 }
