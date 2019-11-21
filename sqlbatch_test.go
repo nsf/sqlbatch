@@ -8,6 +8,7 @@ import (
 	"github.com/lib/pq"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -828,4 +829,44 @@ func TestPrimitive(t *testing.T) {
 		}
 		assertDeepEquals(t, count, 0)
 	}
+}
+
+type FooInt int
+
+func (v FooInt) SqlbatchConv(b *strings.Builder)       { AppendInt64(b, int64(v), false) }
+func (v *FooInt) SqlbatchGet(ifacePtr *interface{})    { *ifacePtr = (int)(*v) }
+func (v *FooInt) SqlbatchGetPtr(ifacePtr *interface{}) { *ifacePtr = (*int)(v) }
+func (v *FooInt) SqlbatchSet(iface interface{})        { *v = FooInt(iface.(int)) }
+func (v *FooInt) SqlbatchWrite(b *strings.Builder)     { AppendInt64(b, int64(*v), false) }
+
+func TestGenericField(t *testing.T) {
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "foo";
+		CREATE TABLE "foo" (
+			a INT NOT NULL,
+			b INT NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (a ASC)
+		);
+	`)
+
+	type Foo struct {
+		A FooInt
+		B int
+	}
+
+	b := New()
+	b.Insert(&Foo{FooInt(1), 111})
+	b.Insert(&Foo{FooInt(2), 222})
+	if err := b.ExecTransaction(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+
+	var result Foo
+	if err := New().QSelect(&result).Where("a = ?", FooInt(2)).Query(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	assertDeepEquals(t, result, Foo{FooInt(2), 222})
 }

@@ -6,6 +6,17 @@ import (
 	"unsafe"
 )
 
+type GenericField interface {
+	SqlbatchGet(ifacePtr *interface{})
+	SqlbatchGetPtr(ifacePtr *interface{})
+	SqlbatchSet(iface interface{})
+	SqlbatchWrite(b *strings.Builder)
+}
+
+type GenericFieldConv interface {
+	SqlbatchConv(b *strings.Builder)
+}
+
 type FieldInterface struct {
 	Conv   func(iface interface{}, b *strings.Builder)
 	Get    func(structPtr unsafe.Pointer, ifacePtr *interface{})
