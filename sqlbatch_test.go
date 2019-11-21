@@ -6,9 +6,9 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/lib/pq"
+	"github.com/nsf/sqlbatch/generic"
 	"math"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -831,14 +831,6 @@ func TestPrimitive(t *testing.T) {
 	}
 }
 
-type FooInt int
-
-func (v FooInt) SqlbatchConv(b *strings.Builder)       { AppendInt64(b, int64(v), false) }
-func (v *FooInt) SqlbatchGet(ifacePtr *interface{})    { *ifacePtr = (int)(*v) }
-func (v *FooInt) SqlbatchGetPtr(ifacePtr *interface{}) { *ifacePtr = (*int)(v) }
-func (v *FooInt) SqlbatchSet(iface interface{})        { *v = FooInt(iface.(int)) }
-func (v *FooInt) SqlbatchWrite(b *strings.Builder)     { AppendInt64(b, int64(*v), false) }
-
 func TestGenericField(t *testing.T) {
 	db := openTestDBConnection(t)
 	defer db.Close()
@@ -853,20 +845,20 @@ func TestGenericField(t *testing.T) {
 	`)
 
 	type Foo struct {
-		A FooInt
+		A generic.Int64
 		B int
 	}
 
 	b := New()
-	b.Insert(&Foo{FooInt(1), 111})
-	b.Insert(&Foo{FooInt(2), 222})
+	b.Insert(&Foo{generic.Int64(1), 111})
+	b.Insert(&Foo{generic.Int64(2), 222})
 	if err := b.ExecTransaction(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 
 	var result Foo
-	if err := New().QSelect(&result).Where("a = ?", FooInt(2)).Query(context.Background(), db); err != nil {
+	if err := New().QSelect(&result).Where("a = ?", generic.Int64(2)).Query(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
-	assertDeepEquals(t, result, Foo{FooInt(2), 222})
+	assertDeepEquals(t, result, Foo{generic.Int64(2), 222})
 }
