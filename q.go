@@ -11,6 +11,13 @@ type orderByField struct {
 	asc   bool
 }
 
+type postKind int
+
+const (
+	postNone postKind = iota
+	postSelect
+)
+
 type QBuilder struct {
 	b             *Batch
 	into          interface{}
@@ -25,6 +32,14 @@ type QBuilder struct {
 	raw           ExprBuilder
 	rawDefined    bool
 	prefix        string
+
+	postKind postKind
+}
+
+func (b *Batch) QSelect(into ...interface{}) *QBuilder {
+	q := b.Q(into...)
+	q.postKind = postSelect
+	return q
 }
 
 func (b *Batch) Q(into ...interface{}) *QBuilder {
@@ -181,5 +196,14 @@ func (q *QBuilder) WriteTo(sb *strings.Builder, si *StructInfo) {
 	// OFFSET
 	if q.offsetDefined {
 		q.b.Expr(" OFFSET ?", q.offset).WriteTo(sb)
+	}
+}
+
+func (q *QBuilder) End() *Batch {
+	switch q.postKind {
+	case postSelect:
+		return q.b.Select(q)
+	default:
+		return q.b
 	}
 }
