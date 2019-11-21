@@ -1,6 +1,7 @@
 package sqlbatch
 
 import (
+	"context"
 	"github.com/lib/pq"
 	"regexp"
 	"strings"
@@ -206,4 +207,14 @@ func (q *QBuilder) End() *Batch {
 	default:
 		return q.b
 	}
+}
+
+// Shortcut for q.End().Query(ctx, conn)
+func (q *QBuilder) Query(ctx context.Context, conn QueryContexter) error {
+	return q.End().Query(ctx, conn)
+}
+
+// Shortcut for q.End().Exec(ctx, conn)
+func (q *QBuilder) Exec(ctx context.Context, conn ExecContexter) error {
+	return q.End().Exec(ctx, conn)
 }
