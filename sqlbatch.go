@@ -124,6 +124,14 @@ func writeFieldValues(si *StructInfo, ptr unsafe.Pointer, sb *strings.Builder, n
 	}
 }
 
+func writeTableName(si *StructInfo, table string, sb *strings.Builder) {
+	if table == "" {
+		sb.WriteString(si.QuotedName)
+	} else {
+		sb.WriteString(pq.QuoteIdentifier(table))
+	}
+}
+
 func setTime(f *FieldInfo, ptr unsafe.Pointer, t time.Time) {
 	if f.IsNull() {
 		f.Interface.Set(ptr, pq.NullTime{Valid: true, Time: t})
@@ -173,6 +181,10 @@ func (b *Batch) Raw(args ...interface{}) *Batch {
 }
 
 func (b *Batch) Insert(v interface{}) *Batch {
+	return b.InsertInto(v, "")
+}
+
+func (b *Batch) InsertInto(v interface{}, table string) *Batch {
 	structVal := reflect.ValueOf(v)
 	t, isSlice := assertPointerToStructOrSliceOfStructs(structVal.Type())
 	if isSlice {
@@ -184,7 +196,7 @@ func (b *Batch) Insert(v interface{}) *Batch {
 
 	sb := b.beginNextStmt()
 	sb.WriteString("INSERT INTO ")
-	sb.WriteString(si.QuotedName)
+	writeTableName(si, table, sb)
 	sb.WriteString(" (")
 	fieldNamesWriter := newListWriter(sb)
 	for _, f := range si.Fields {
@@ -197,6 +209,10 @@ func (b *Batch) Insert(v interface{}) *Batch {
 }
 
 func (b *Batch) Upsert(v interface{}) *Batch {
+	return b.UpsertInto(v, "")
+}
+
+func (b *Batch) UpsertInto(v interface{}, table string) *Batch {
 	structVal := reflect.ValueOf(v)
 	t, isSlice := assertPointerToStructOrSliceOfStructs(structVal.Type())
 	if isSlice {
@@ -208,7 +224,7 @@ func (b *Batch) Upsert(v interface{}) *Batch {
 
 	sb := b.beginNextStmt()
 	sb.WriteString("UPSERT INTO ")
-	sb.WriteString(si.QuotedName)
+	writeTableName(si, table, sb)
 	sb.WriteString(" (")
 	fieldNamesWriter := newListWriter(sb)
 	for _, f := range si.Fields {
@@ -221,6 +237,10 @@ func (b *Batch) Upsert(v interface{}) *Batch {
 }
 
 func (b *Batch) Update(v interface{}) *Batch {
+	return b.UpdateInto(v, "")
+}
+
+func (b *Batch) UpdateInto(v interface{}, table string) *Batch {
 	structVal := reflect.ValueOf(v)
 	t := assertPointerToStruct(structVal.Type())
 
@@ -230,7 +250,7 @@ func (b *Batch) Update(v interface{}) *Batch {
 
 	sb := b.beginNextStmt()
 	sb.WriteString("UPDATE ")
-	sb.WriteString(si.QuotedName)
+	writeTableName(si, table, sb)
 	sb.WriteString(" SET ")
 	valsWriter := newListWriter(sb)
 	for _, f := range si.NonPrimaryKeys {
@@ -248,6 +268,10 @@ func (b *Batch) Update(v interface{}) *Batch {
 }
 
 func (b *Batch) Delete(v interface{}) *Batch {
+	return b.DeleteFrom(v, "")
+}
+
+func (b *Batch) DeleteFrom(v interface{}, table string) *Batch {
 	structVal := reflect.ValueOf(v)
 	t := assertPointerToStruct(structVal.Type())
 
@@ -257,7 +281,7 @@ func (b *Batch) Delete(v interface{}) *Batch {
 
 	sb := b.beginNextStmt()
 	sb.WriteString("DELETE FROM ")
-	sb.WriteString(si.QuotedName)
+	writeTableName(si, table, sb)
 	sb.WriteString(" WHERE ")
 	writePrimaryKeysWhereCondition(si, ptr, sb)
 	return b
