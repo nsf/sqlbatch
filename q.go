@@ -199,11 +199,15 @@ func (q *QBuilder) WriteTo(sb *strings.Builder, si *StructInfo) {
 		sb.WriteString(" ORDER BY ")
 	}
 	for i, f := range q.orderByFields {
-		ff := si.FindField(f.field)
-		if ff == nil {
-			panic("unknown column: " + f.field + " (in table: " + si.QuotedName + ")")
+		if si != nil {
+			ff := si.FindField(f.field)
+			if ff == nil {
+				panic("unknown column: " + f.field + " (in table: " + si.QuotedName + ")")
+			}
+			sb.WriteString(ff.QuotedName)
+		} else {
+			sb.WriteString(pq.QuoteIdentifier(f.field))
 		}
-		sb.WriteString(ff.QuotedName)
 		if f.asc {
 			sb.WriteString(" ASC")
 		} else {
