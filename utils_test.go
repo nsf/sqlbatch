@@ -2,6 +2,7 @@ package sqlbatch
 
 import (
 	"database/sql"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -57,5 +58,11 @@ func dbScanSingleRow(t *testing.T, db *sql.DB, query string, vals ...interface{}
 func assertStringEquals(t *testing.T, v, expected string) {
 	if v != expected {
 		t.Errorf("string values mismatch:\ngot:\n%s\nexpected:\n%s", v, expected)
+	}
+}
+
+func assertDeepEquals(t *testing.T, a, b interface{}) {
+	if !reflect.DeepEqual(a, b) {
+		t.Errorf("equality expected, got: %v != %v", a, b)
 	}
 }

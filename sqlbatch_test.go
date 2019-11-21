@@ -763,3 +763,69 @@ func TestRaw(t *testing.T) {
 	b.Raw("DELETE FROM foo WHERE bar = ?", 1)
 	assertStringEquals(t, b.String(), `DELETE FROM foo WHERE bar = 1`)
 }
+
+func TestPrimitive(t *testing.T) {
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "foo";
+		CREATE TABLE "foo" (
+			a INT NOT NULL,
+			b INT NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (a ASC)
+		);
+	`)
+
+	type Foo struct {
+		A int
+		B int
+	}
+
+	b := New()
+	b.Insert(&Foo{1, 0})
+	b.Insert(&Foo{2, 0})
+	if err := b.Exec(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+
+	{
+		var count int
+		if err := New().QSelect(&count).TableFromStruct(&Foo{}).Fields("COUNT(*)").Query(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+		assertDeepEquals(t, count, 2)
+	}
+
+	{
+		var ids []int8
+		if err := New().QSelect(&ids).TableFromStruct(&Foo{}).Fields("a").Query(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+		assertDeepEquals(t, ids, []int8{1, 2})
+	}
+
+	{
+		var sum int
+		if err := New().QSelect(&sum).TableFromStruct(&Foo{}).Fields("SUM(a)").Query(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+		assertDeepEquals(t, sum, 3)
+	}
+
+	{
+		var sum sql.NullInt64
+		if err := New().QSelect(&sum).TableFromStruct(&Foo{}).Fields("SUM(a)").Where("a = 4").Query(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+		assertDeepEquals(t, sum, sql.NullInt64{})
+	}
+
+	{
+		var count int
+		if err := New().QSelect(&count).TableFromStruct(&Foo{}).Fields("COUNT(*)").Where("a = 4").Query(context.Background(), db); err != nil {
+			t.Fatal(err)
+		}
+		assertDeepEquals(t, count, 0)
+	}
+}

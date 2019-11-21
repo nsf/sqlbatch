@@ -3,6 +3,7 @@ package sqlbatch
 import (
 	"context"
 	"github.com/lib/pq"
+	"reflect"
 	"regexp"
 	"strings"
 )
@@ -33,6 +34,7 @@ type QBuilder struct {
 	raw           ExprBuilder
 	rawDefined    bool
 	prefix        string
+	fields        []string
 
 	postKind postKind
 }
@@ -77,6 +79,19 @@ func (q *QBuilder) Table(v string) *QBuilder {
 	return q
 }
 
+func (q *QBuilder) TableFromStruct(v interface{}) *QBuilder {
+	val := reflect.ValueOf(v)
+	t, _ := assertPointerToStructOrPointerToSliceOfStructs(val.Type())
+	si := GetStructInfo(t, q.b.customResolver())
+	q.quotedTable = si.QuotedName
+	return q
+}
+
+func (q *QBuilder) Fields(v ...string) *QBuilder {
+	q.fields = v
+	return q
+}
+
 func (q *QBuilder) Into(v interface{}) *QBuilder {
 	q.into = v
 	return q
@@ -113,9 +128,9 @@ func (q *QBuilder) WithErr(errp *error) *QBuilder {
 }
 
 func (q *QBuilder) quotedTableName(si *StructInfo) string {
-	tname := si.QuotedName
-	if q.quotedTable != "" {
-		tname = q.quotedTable
+	tname := q.quotedTable
+	if tname == "" {
+		tname = si.QuotedName
 	}
 
 	if q.prefix != "" {
@@ -132,6 +147,19 @@ func (q *QBuilder) prefixedFieldName(name string) string {
 	}
 }
 
+func (q *QBuilder) columns(sb *strings.Builder, si *StructInfo) {
+	fieldNamesWriter := newListWriter(sb)
+	if q.fields != nil {
+		for _, f := range q.fields {
+			fieldNamesWriter.WriteString(q.prefixedFieldName(f))
+		}
+	} else {
+		for _, f := range si.Fields {
+			fieldNamesWriter.WriteString(q.prefixedFieldName(f.QuotedName))
+		}
+	}
+}
+
 var specialRegexp = regexp.MustCompile(`:[a-z]+:`)
 
 func (q *QBuilder) writeRawTo(sb *strings.Builder, si *StructInfo) {
@@ -144,10 +172,7 @@ func (q *QBuilder) writeRawTo(sb *strings.Builder, si *StructInfo) {
 		v = v[1 : len(v)-1]
 		if v == "columns" {
 			var sb strings.Builder
-			fieldNamesWriter := newListWriter(&sb)
-			for _, f := range si.Fields {
-				fieldNamesWriter.WriteString(q.prefixedFieldName(f.QuotedName))
-			}
+			q.columns(&sb, si)
 			return sb.String()
 		} else if v == "table" {
 			return q.quotedTableName(si)

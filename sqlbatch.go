@@ -68,6 +68,14 @@ func assertPointerToStructOrSliceOfStructs(t reflect.Type) (reflect.Type, bool) 
 	return t, isSlice
 }
 
+func assertPointerOrPointerToSlice(t reflect.Type) (reflect.Type, bool) {
+	if t.Kind() != reflect.Ptr {
+		panic("pointer to value or pointer to slice of values")
+	}
+	t = t.Elem()
+	return t, t.Kind() == reflect.Slice
+}
+
 func assertPointerToStructOrPointerToSliceOfStructs(t reflect.Type) (reflect.Type, bool) {
 	isSlice := false
 	if t.Kind() != reflect.Ptr {
@@ -261,29 +269,40 @@ func (b *Batch) Select(qs ...*QBuilder) *Batch {
 			panic("make sure to call Q().Into(&v) before submitting the Q")
 		}
 		val := reflect.ValueOf(q.into)
-		t, isSlice := assertPointerToStructOrPointerToSliceOfStructs(val.Type())
-
-		si := GetStructInfo(t, b.customResolver())
-		b.readIntos = append(b.readIntos, readInto{
-			si:    si,
-			slice: isSlice,
-			ptr:   unsafe.Pointer(val.Pointer()),
-			val:   val,
-			errp:  q.errp,
-		})
+		var si *StructInfo
+		var isSlice bool
+		if q.fields != nil {
+			if q.quotedTable == "" {
+				panic("table must be specified explicitly when using Fields()")
+			}
+			_, isSlice = assertPointerOrPointerToSlice(val.Type())
+			b.readIntos = append(b.readIntos, readInto{
+				slice:     isSlice,
+				val:       val,
+				errp:      q.errp,
+				primitive: true,
+			})
+		} else {
+			var t reflect.Type
+			t, isSlice = assertPointerToStructOrPointerToSliceOfStructs(val.Type())
+			si = GetStructInfo(t, b.customResolver())
+			b.readIntos = append(b.readIntos, readInto{
+				si:    si,
+				slice: isSlice,
+				ptr:   unsafe.Pointer(val.Pointer()),
+				val:   val,
+				errp:  q.errp,
+			})
+		}
 
 		sb := b.beginNextStmt()
 		if q.rawDefined {
 			q.writeRawTo(sb, si)
 		} else {
 			sb.WriteString("SELECT ")
-			fieldNamesWriter := newListWriter(sb)
-			for _, f := range si.Fields {
-				fieldNamesWriter.WriteString(f.QuotedName)
-			}
+			q.columns(sb, si)
 			sb.WriteString(" FROM ")
 			sb.WriteString(q.quotedTableName(si))
-
 			q.setImplicitLimit(isSlice)
 			q.WriteTo(sb, si)
 		}
@@ -337,10 +356,16 @@ func (b *Batch) Query(ctx context.Context, conn QueryContexter) error {
 
 	var ptrs []interface{}
 	for _, r := range b.readIntos {
-		if cap(ptrs) < len(r.si.Fields) {
-			ptrs = make([]interface{}, 0, len(r.si.Fields))
+		var numArgs int
+		if r.primitive {
+			numArgs = 1
+		} else {
+			numArgs = len(r.si.Fields)
 		}
-		ptrs = ptrs[:len(r.si.Fields)]
+		if cap(ptrs) < numArgs {
+			ptrs = make([]interface{}, 0, numArgs)
+		}
+		ptrs = ptrs[:numArgs]
 		if r.slice {
 			val := r.val.Elem() // get the slice itself
 			idx := 0
@@ -361,9 +386,13 @@ func (b *Batch) Query(ctx context.Context, conn QueryContexter) error {
 				if idx >= val.Len() {
 					val.SetLen(idx + 1)
 				}
-				ptr := unsafe.Pointer(val.Index(idx).Addr().Pointer())
-				for i, f := range r.si.Fields {
-					f.Interface.GetPtr(ptr, &ptrs[i])
+				if r.primitive {
+					ptrs[0] = val.Index(idx).Addr().Interface()
+				} else {
+					ptr := unsafe.Pointer(val.Index(idx).Addr().Pointer())
+					for i, f := range r.si.Fields {
+						f.Interface.GetPtr(ptr, &ptrs[i])
+					}
 				}
 				if err := rows.Scan(ptrs...); err != nil {
 					return err
@@ -378,8 +407,12 @@ func (b *Batch) Query(ctx context.Context, conn QueryContexter) error {
 					*r.errp = ErrNotFound
 				}
 			} else {
-				for i, f := range r.si.Fields {
-					f.Interface.GetPtr(r.ptr, &ptrs[i])
+				if r.primitive {
+					ptrs[0] = r.val.Interface()
+				} else {
+					for i, f := range r.si.Fields {
+						f.Interface.GetPtr(r.ptr, &ptrs[i])
+					}
 				}
 				if err := rows.Scan(ptrs...); err != nil {
 					return err
