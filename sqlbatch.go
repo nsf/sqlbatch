@@ -12,6 +12,7 @@ import (
 )
 
 type Batch struct {
+	transaction                  bool
 	stmtBuilder                  strings.Builder
 	liveNestedBuilders           map[int]string
 	nextNestedBuilderID          int
@@ -352,9 +353,9 @@ func (b *Batch) Exec(ctx context.Context, conn ExecContexter) error {
 	return err
 }
 
-func (b *Batch) ExecTransaction(ctx context.Context, conn ExecContexter) error {
-	_, err := conn.ExecContext(ctx, "BEGIN; "+b.String()+"; COMMIT")
-	return err
+func (b *Batch) Transaction() *Batch {
+	b.transaction = true
+	return b
 }
 
 var ErrNotFound = errors.New("not found")
@@ -465,5 +466,9 @@ func (b *Batch) Query(ctx context.Context, conn QueryContexter) error {
 }
 
 func (b *Batch) String() string {
-	return b.stmtBuilder.String()
+	if b.transaction {
+		return "BEGIN; " + b.stmtBuilder.String() + "; COMMIT"
+	} else {
+		return b.stmtBuilder.String()
+	}
 }

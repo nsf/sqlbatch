@@ -786,7 +786,8 @@ func TestPrimitive(t *testing.T) {
 	b := New()
 	b.Insert(&Foo{1, 0})
 	b.Insert(&Foo{2, 0})
-	if err := b.ExecTransaction(context.Background(), db); err != nil {
+	b.Transaction()
+	if err := b.Exec(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 
@@ -852,7 +853,7 @@ func TestGenericField(t *testing.T) {
 	b := New()
 	b.Insert(&Foo{int64(1), 111})
 	b.Insert(&Foo{int8(2), 222})
-	if err := b.ExecTransaction(context.Background(), db); err != nil {
+	if err := b.Exec(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 }
