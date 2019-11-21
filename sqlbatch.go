@@ -323,6 +323,11 @@ func (b *Batch) Exec(ctx context.Context, conn ExecContexter) error {
 	return err
 }
 
+func (b *Batch) ExecTransaction(ctx context.Context, conn ExecContexter) error {
+	_, err := conn.ExecContext(ctx, "BEGIN; "+b.String()+"; COMMIT")
+	return err
+}
+
 var ErrNotFound = errors.New("not found")
 
 var select1HackFailure = errors.New("SELECT 1 hack failure")

@@ -785,7 +785,7 @@ func TestPrimitive(t *testing.T) {
 	b := New()
 	b.Insert(&Foo{1, 0})
 	b.Insert(&Foo{2, 0})
-	if err := b.Exec(context.Background(), db); err != nil {
+	if err := b.ExecTransaction(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 
