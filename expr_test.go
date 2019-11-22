@@ -21,7 +21,7 @@ func TestExprBuilder(t *testing.T) {
 		"(shop_id = 'id1' AND id = 'id2')")
 	assertStringEquals(t,
 		b.Expr("shop_id = ?", []byte{1, 2, 3}).Or("x > ?", time.Time{}).String(),
-		`(shop_id = '\x010203' OR x > TIMESTAMP '0001-01-01 00:00:00')`)
+		`(shop_id = '\x010203' OR x > '0001-01-01 00:00:00')`)
 	assertStringEquals(t,
 		b.Expr("shop_id = ? AND id = ?", 5, 10).String(),
 		`shop_id = 5 AND id = 10`)

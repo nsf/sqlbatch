@@ -13,7 +13,7 @@ func AppendTime(b *strings.Builder, t time.Time, isNull bool) {
 	if isNull {
 		b.WriteString("NULL")
 	} else {
-		b.WriteString("TIMESTAMP '")
+		b.WriteString("'")
 		b.WriteString(t.UTC().Format("2006-01-02 15:04:05.999999"))
 		b.WriteString("'")
 	}

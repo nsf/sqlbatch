@@ -478,12 +478,12 @@ func TestCreatedUpdated(t *testing.T) {
 	b1.SetTimeNowFunc(func() time.Time { return rfc3339ToTime("2012-12-12T12:12:12Z") })
 	b1.Insert(&CreatedUpdated{ID: 1})
 	assertStringEquals(t, b1.String(),
-		`INSERT INTO "created_updated" ("id", "created_at", "updated_at") VALUES (1, TIMESTAMP '2012-12-12 12:12:12', TIMESTAMP '2012-12-12 12:12:12') RETURNING NOTHING`)
+		`INSERT INTO "created_updated" ("id", "created_at", "updated_at") VALUES (1, '2012-12-12 12:12:12', '2012-12-12 12:12:12') RETURNING NOTHING`)
 	b2 := New()
 	b2.SetTimeNowFunc(func() time.Time { return rfc3339ToTime("2012-12-12T12:12:12Z") })
 	b2.Update(&CreatedUpdated{ID: 1})
 	assertStringEquals(t, b2.String(),
-		`UPDATE "created_updated" SET "created_at" = TIMESTAMP '0001-01-01 00:00:00', "updated_at" = TIMESTAMP '2012-12-12 12:12:12' WHERE "id" = 1 RETURNING NOTHING`)
+		`UPDATE "created_updated" SET "created_at" = '0001-01-01 00:00:00', "updated_at" = '2012-12-12 12:12:12' WHERE "id" = 1 RETURNING NOTHING`)
 }
 
 func TestGet(t *testing.T) {
