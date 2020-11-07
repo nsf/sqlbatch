@@ -66,13 +66,6 @@ func exprFromArgs(b *Batch, args ...interface{}) *expr {
 	}
 }
 
-func (b *Batch) Expr(args ...interface{}) ExprBuilder {
-	if len(args) == 0 {
-		return ExprBuilder{b: b}
-	}
-	return ExprBuilder{b: b, root: exprFromArgs(b, args...)}
-}
-
 func (eb ExprBuilder) And(args ...interface{}) ExprBuilder {
 	if eb.root == nil {
 		return ExprBuilder{b: eb.b, root: exprFromArgs(eb.b, args...)}

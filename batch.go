@@ -8,6 +8,7 @@ import (
 	"github.com/nsf/sqlbatch/helper"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 )
@@ -19,88 +20,12 @@ type Batch struct {
 	now                          time.Time
 	readIntos                    []readInto
 	customFieldInterfaceResolver FieldInterfaceResolver
+	numUncommittedQs             int
+	numWriteStmts                int
 }
 
 func New() *Batch {
 	return &Batch{}
-}
-
-func assertSliceOfStructs(t reflect.Type) reflect.Type {
-	if t.Kind() != reflect.Slice {
-		panic("slice of structs expected")
-	}
-	t = t.Elem()
-	if t.Kind() != reflect.Struct {
-		panic("slice of structs expected")
-	}
-	return t
-}
-
-func assertPointerToStruct(t reflect.Type) reflect.Type {
-	if t.Kind() != reflect.Ptr {
-		panic("pointer to struct expected")
-	}
-	t = t.Elem()
-	if t.Kind() != reflect.Struct {
-		panic("pointer to struct expected")
-	}
-	return t
-}
-
-func assertPointerToStructOrSliceOfStructs(t reflect.Type) (reflect.Type, bool) {
-	isSlice := false
-	switch t.Kind() {
-	case reflect.Ptr:
-		t = t.Elem()
-		switch t.Kind() {
-		case reflect.Struct:
-			// do nothing
-		default:
-			panic("pointer to struct or slice of structs expected")
-		}
-	case reflect.Slice:
-		isSlice = true
-		t = t.Elem()
-		if t.Kind() != reflect.Struct {
-			panic("pointer to struct or slice of structs expected")
-		}
-	}
-	return t, isSlice
-}
-
-func assertPointerOrPointerToSlice(t reflect.Type) (reflect.Type, bool) {
-	if t.Kind() != reflect.Ptr {
-		panic("pointer to value or pointer to slice of values")
-	}
-	t = t.Elem()
-	return t, t.Kind() == reflect.Slice
-}
-
-func assertPointerToStructOrPointerToSliceOfStructs(t reflect.Type) (reflect.Type, bool) {
-	isSlice := false
-	if t.Kind() != reflect.Ptr {
-		panic("pointer to struct or pointer to slice of structs expected")
-	}
-	t = t.Elem()
-	switch t.Kind() {
-	case reflect.Slice:
-		isSlice = true
-		t = t.Elem()
-		if t.Kind() != reflect.Struct {
-			panic("pointer to struct or pointer to slice of structs expected")
-		}
-	case reflect.Struct:
-		// do nothing
-	default:
-		panic("pointer to struct or pointer to slice of structs expected")
-	}
-	return t, isSlice
-}
-
-func assertHasPrimaryKeys(si *StructInfo) {
-	if len(si.PrimaryKeys) == 0 {
-		panic("struct has no primary keys defined")
-	}
 }
 
 func writePrimaryKeysWhereCondition(si *StructInfo, ptr unsafe.Pointer, sb *strings.Builder) {
@@ -162,11 +87,116 @@ func (b *Batch) customResolver() FieldInterfaceResolver {
 }
 
 func (b *Batch) beginNextStmt() *strings.Builder {
+	b.numWriteStmts++
 	sb := &b.stmtBuilder
 	if sb.Len() != 0 {
 		sb.WriteString("; ")
 	}
 	return sb
+}
+
+func (b *Batch) parallelQuery(ctx context.Context, conn QueryContexter) error {
+	var wg sync.WaitGroup
+	wg.Add(len(b.readIntos))
+
+	errors := make([]error, len(b.readIntos))
+	for i, r := range b.readIntos {
+		i, r := i, r
+		go func() {
+			rows, err := conn.QueryContext(ctx, r.stmt.String())
+			if err != nil {
+				errors[i] = err
+				wg.Done()
+				return
+			}
+			defer rows.Close()
+
+			var numArgs int
+			if r.primitive {
+				numArgs = 1
+			} else {
+				numArgs = len(r.si.Fields)
+			}
+			ptrs := make([]interface{}, numArgs)
+			if r.slice {
+				val := r.val.Elem() // get the slice itself
+				idx := 0
+				for {
+					gotNext := rows.Next()
+					if !gotNext {
+						break
+					}
+					if idx >= val.Cap() {
+						newCap := val.Cap() * 2
+						if idx >= newCap {
+							newCap = idx + 1
+						}
+						newSlice := reflect.MakeSlice(val.Type(), val.Len(), newCap)
+						reflect.Copy(newSlice, val)
+						val.Set(newSlice)
+					}
+					if idx >= val.Len() {
+						val.SetLen(idx + 1)
+					}
+					if r.primitive {
+						ptrs[0] = val.Index(idx).Addr().Interface()
+					} else {
+						ptr := unsafe.Pointer(val.Index(idx).Addr().Pointer())
+						for i, f := range r.si.Fields {
+							f.Interface.GetPtr(ptr, &ptrs[i])
+						}
+					}
+					if err := rows.Scan(ptrs...); err != nil {
+						errors[i] = err
+						wg.Done()
+						return
+					}
+					idx++
+				}
+				val.SetLen(idx)
+			} else {
+				hasValue := rows.Next()
+				if !hasValue {
+					if r.errp != nil {
+						*r.errp = ErrNotFound
+					}
+				} else {
+					if r.primitive {
+						ptrs[0] = r.val.Interface()
+					} else {
+						for i, f := range r.si.Fields {
+							f.Interface.GetPtr(r.ptr, &ptrs[i])
+						}
+					}
+					if err := rows.Scan(ptrs...); err != nil {
+						errors[i] = err
+						wg.Done()
+						return
+					}
+					for rows.Next() {
+						// skip all the extra rows for single item fetch
+					}
+				}
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	// check errors
+	numErrors := 0
+	for _, e := range errors {
+		if e != nil {
+			errors[numErrors] = e
+			numErrors++
+		}
+	}
+	errors = errors[:numErrors]
+	if len(errors) != 0 {
+		return &MultiError{Errors: errors}
+	} else {
+		return nil
+	}
 }
 
 func (b *Batch) SetTimeNowFunc(f func() time.Time) *Batch {
@@ -296,7 +326,20 @@ func (b *Batch) DeleteFrom(v interface{}, table string) *Batch {
 	return b
 }
 
-func (b *Batch) Select(qs ...*QBuilder) *Batch {
+func (b *Batch) QueryBuilder(into ...interface{}) *QueryBuilder {
+	b.numUncommittedQs++
+	if len(into) > 1 {
+		panic("multiple arguments are not allowed, this is a single optional argument")
+	}
+	var intoVal interface{}
+	if len(into) > 0 {
+		intoVal = into[0]
+	}
+	return &QueryBuilder{b: b, into: intoVal}
+}
+
+func (b *Batch) Select(qs ...*QueryBuilder) *Batch {
+	b.numUncommittedQs -= len(qs)
 	for _, q := range qs {
 		if q.into == nil {
 			panic("make sure to call Q().Into(&v) before submitting the Q")
@@ -304,41 +347,44 @@ func (b *Batch) Select(qs ...*QBuilder) *Batch {
 		val := reflect.ValueOf(q.into)
 		var si *StructInfo
 		var isSlice bool
+		var ri readInto
+
 		if q.fields != nil {
 			if q.quotedTable == "" {
 				panic("table must be specified explicitly when using Fields()")
 			}
 			_, isSlice = assertPointerOrPointerToSlice(val.Type())
-			b.readIntos = append(b.readIntos, readInto{
+			ri = readInto{
 				slice:     isSlice,
 				val:       val,
 				errp:      q.errp,
 				primitive: true,
-			})
+			}
 		} else {
 			var t reflect.Type
 			t, isSlice = assertPointerToStructOrPointerToSliceOfStructs(val.Type())
 			si = GetStructInfo(t, b.customResolver())
-			b.readIntos = append(b.readIntos, readInto{
+			ri = readInto{
 				si:    si,
 				slice: isSlice,
 				ptr:   unsafe.Pointer(val.Pointer()),
 				val:   val,
 				errp:  q.errp,
-			})
+			}
 		}
 
-		sb := b.beginNextStmt()
 		if q.rawDefined {
-			q.writeRawTo(sb, si)
+			q.writeRawTo(&ri.stmt, si)
 		} else {
-			sb.WriteString("SELECT ")
-			q.columns(sb, si)
-			sb.WriteString(" FROM ")
-			sb.WriteString(q.quotedTableName(si))
+			ri.stmt.WriteString("SELECT ")
+			q.columns(&ri.stmt, si)
+			ri.stmt.WriteString(" FROM ")
+			ri.stmt.WriteString(q.quotedTableName(si))
 			q.setImplicitLimit(isSlice)
-			q.WriteTo(sb, si)
+			q.WriteTo(&ri.stmt, si)
 		}
+
+		b.readIntos = append(b.readIntos, ri)
 	}
 	return b
 }
@@ -351,9 +397,24 @@ type QueryContexter interface {
 	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
 }
 
-func (b *Batch) Exec(ctx context.Context, conn ExecContexter) error {
-	_, err := conn.ExecContext(ctx, b.String())
-	return err
+type ExecQueryContexter interface {
+	ExecContexter
+	QueryContexter
+}
+
+func (b *Batch) Run(ctx context.Context, conn ExecQueryContexter) error {
+	if b.numWriteStmts > 0 && len(b.readIntos) > 0 {
+		panic("Batch contains both SELECT and UPDATE/INSERT/UPSERT/DELETE statements. Batch should contain only reads or only writes, but not both.")
+	}
+	if b.numUncommittedQs > 0 {
+		panic("Batch has uncommitted query builders, only create query builders using QueryBuilder() if you end up committing it (using QueryBuilder.End() or Batch.Select())")
+	}
+	if b.numWriteStmts > 0 {
+		_, err := conn.ExecContext(ctx, b.String())
+		return err
+	} else {
+		return b.parallelQuery(ctx, conn)
+	}
 }
 
 func (b *Batch) Transaction() *Batch {
@@ -363,115 +424,30 @@ func (b *Batch) Transaction() *Batch {
 
 var ErrNotFound = errors.New("not found")
 
-var select1HackFailure = errors.New("SELECT 1 hack failure")
-
-func skipSelectOneHack(rows *sql.Rows) error {
-	gotNext := rows.Next()
-	if !gotNext {
-		return select1HackFailure
+func (b *Batch) Expr(args ...interface{}) ExprBuilder {
+	if len(args) == 0 {
+		return ExprBuilder{b: b}
 	}
-	gotNext = rows.Next()
-	if gotNext {
-		return select1HackFailure
-	}
-	moreSets := rows.NextResultSet()
-	if !moreSets {
-		return select1HackFailure
-	}
-	return nil
-}
-
-func (b *Batch) Query(ctx context.Context, conn QueryContexter) error {
-	rows, err := conn.QueryContext(ctx, "SELECT 1; "+b.String())
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	if err := skipSelectOneHack(rows); err != nil {
-		return err
-	}
-
-	var ptrs []interface{}
-	for _, r := range b.readIntos {
-		var numArgs int
-		if r.primitive {
-			numArgs = 1
-		} else {
-			numArgs = len(r.si.Fields)
-		}
-		if cap(ptrs) < numArgs {
-			ptrs = make([]interface{}, 0, numArgs)
-		}
-		ptrs = ptrs[:numArgs]
-		if r.slice {
-			val := r.val.Elem() // get the slice itself
-			idx := 0
-			for {
-				gotNext := rows.Next()
-				if !gotNext {
-					break
-				}
-				if idx >= val.Cap() {
-					newCap := val.Cap() * 2
-					if idx >= newCap {
-						newCap = idx + 1
-					}
-					newSlice := reflect.MakeSlice(val.Type(), val.Len(), newCap)
-					reflect.Copy(newSlice, val)
-					val.Set(newSlice)
-				}
-				if idx >= val.Len() {
-					val.SetLen(idx + 1)
-				}
-				if r.primitive {
-					ptrs[0] = val.Index(idx).Addr().Interface()
-				} else {
-					ptr := unsafe.Pointer(val.Index(idx).Addr().Pointer())
-					for i, f := range r.si.Fields {
-						f.Interface.GetPtr(ptr, &ptrs[i])
-					}
-				}
-				if err := rows.Scan(ptrs...); err != nil {
-					return err
-				}
-				idx++
-			}
-			val.SetLen(idx)
-		} else {
-			hasValue := rows.Next()
-			if !hasValue {
-				if r.errp != nil {
-					*r.errp = ErrNotFound
-				}
-			} else {
-				if r.primitive {
-					ptrs[0] = r.val.Interface()
-				} else {
-					for i, f := range r.si.Fields {
-						f.Interface.GetPtr(r.ptr, &ptrs[i])
-					}
-				}
-				if err := rows.Scan(ptrs...); err != nil {
-					return err
-				}
-				for rows.Next() {
-					// skip all the extra rows for single item fetch
-				}
-			}
-		}
-		moreSets := rows.NextResultSet()
-		if !moreSets {
-			break
-		}
-	}
-	return nil
+	return ExprBuilder{b: b, root: exprFromArgs(b, args...)}
 }
 
 func (b *Batch) String() string {
-	if b.transaction {
-		return "BEGIN; " + b.stmtBuilder.String() + "; COMMIT"
-	} else {
-		return b.stmtBuilder.String()
+	for _, r := range b.readIntos {
+		sb := b.beginNextStmt()
+		sb.WriteString(r.stmt.String())
 	}
+
+	var out string
+	if b.transaction {
+		out = "BEGIN; " + b.stmtBuilder.String() + "; COMMIT"
+	} else {
+		out = b.stmtBuilder.String()
+	}
+
+	if len(b.readIntos) != 0 {
+		b.stmtBuilder = strings.Builder{}
+		b.numWriteStmts = 0
+	}
+
+	return out
 }

@@ -498,26 +498,26 @@ func TestGet(t *testing.T) {
 
 	{
 		b := New()
-		b.Select(b.Q(&out1).Where("id = ?", 1))
-		b.Select(b.Q(&out2).Where("id = ?", 2))
+		b.Select(b.QueryBuilder(&out1).Where("id = ?", 1))
+		b.Select(b.QueryBuilder(&out2).Where("id = ?", 2))
 		assertStringEquals(t, b.String(),
 			`SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 1 LIMIT 1; SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 2 LIMIT 1`)
 	}
 	{
 		b := New()
-		b.Select(b.Q(&out1))
+		b.Select(b.QueryBuilder(&out1))
 		assertStringEquals(t, b.String(),
 			`SELECT "id", "created_at", "updated_at" FROM "created_updated" LIMIT 1`)
 	}
 	{
 		b := New()
-		b.Select(b.Q(&out1).Where("id = ?", 1).OrderBy("created_at", false).Limit(10))
+		b.Select(b.QueryBuilder(&out1).Where("id = ?", 1).OrderBy("created_at", false).Limit(10))
 		assertStringEquals(t, b.String(),
 			`SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 1 ORDER BY "created_at" DESC LIMIT 1`)
 	}
 	{
 		b := New()
-		b.Select(b.Q(&out3).Where("id = ?", 1).OrderBy("created_at", false).Limit(10))
+		b.Select(b.QueryBuilder(&out3).Where("id = ?", 1).OrderBy("created_at", false).Limit(10))
 		assertStringEquals(t, b.String(),
 			`SELECT "id", "created_at", "updated_at" FROM "created_updated" WHERE id = 1 ORDER BY "created_at" DESC LIMIT 10`)
 	}
@@ -567,7 +567,7 @@ func TestQuery(t *testing.T) {
 		b.Insert(&TestQuery2{ID: 1, D: "D1", E: "E1", F: "F1"})
 		b.Insert(&TestQuery2{ID: 2, D: "D2", E: "E2", F: "F2"})
 		b.Insert(&TestQuery2{ID: 3, D: "D3", E: "E3", F: "F3"})
-		if err := b.Exec(context.Background(), db); err != nil {
+		if err := b.Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -579,12 +579,12 @@ func TestQuery(t *testing.T) {
 		)
 		b := New()
 		b.Select(
-			b.Q(&out3).Where("id > ?", 1).OrderBy("id", false),
-			b.Q(&out1).Where("id = ?", 1).Limit(1),
-			b.Q(&out2).OrderBy("id", true),
+			b.QueryBuilder(&out3).Where("id > ?", 1).OrderBy("id", false),
+			b.QueryBuilder(&out1).Where("id = ?", 1).Limit(1),
+			b.QueryBuilder(&out2).OrderBy("id", true),
 		)
 		t.Log(b.String())
-		if err := b.Query(context.Background(), db); err != nil {
+		if err := b.Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 		expected1 := TestQuery{ID: 1, A: 1, B: "one", C: rfc3339ToTime("2015-06-02T02:00:56+00:00")}
@@ -638,7 +638,7 @@ func TestArrayInWhereExpr(t *testing.T) {
 		b.Insert(&TestArr{ID: 4, A: "four"})
 		b.Insert(&TestArr{ID: 5, A: "five"})
 		b.Insert(&TestArr{ID: 6, A: "six"})
-		if err := b.Exec(context.Background(), db); err != nil {
+		if err := b.Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -646,11 +646,11 @@ func TestArrayInWhereExpr(t *testing.T) {
 		var out []TestArr
 		b := New()
 		b.Select(
-			b.Q(&out).Where("id in (?)", []int64{1, 2, 3}),
-			b.Q(&out).Where("a in (?)", []string{"one", "two"}),
+			b.QueryBuilder(&out).Where("id in (?)", []int64{1, 2, 3}),
+			b.QueryBuilder(&out).Where("a in (?)", []string{"one", "two"}),
 		)
 		assertStringEquals(t, b.String(), `SELECT "id", "a" FROM "test_arr" WHERE id in (1, 2, 3); SELECT "id", "a" FROM "test_arr" WHERE a in ('one', 'two')`)
-		if err := b.Query(context.Background(), db); err != nil {
+		if err := b.Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -691,7 +691,7 @@ func TestEmptyResults(t *testing.T) {
 		b.Insert(&TestC{ID: 1})
 		b.Insert(&TestC{ID: 2})
 		b.Insert(&TestC{ID: 3})
-		if err := b.Exec(context.Background(), db); err != nil {
+		if err := b.Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -703,11 +703,11 @@ func TestEmptyResults(t *testing.T) {
 		)
 		b := New()
 		b.Select(
-			b.Q(&outa),
-			b.Q(&outb),
-			b.Q(&outc),
+			b.QueryBuilder(&outa),
+			b.QueryBuilder(&outb),
+			b.QueryBuilder(&outc),
 		)
-		if err := b.Query(context.Background(), db); err != nil {
+		if err := b.Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 		if len(outa) != 0 || len(outb) != 0 || len(outc) != 3 {
@@ -723,7 +723,7 @@ func TestCustomTable(t *testing.T) {
 	}
 	var out Foo
 	b := New()
-	b.Select(b.Q(&out).Table("bar"))
+	b.Select(b.QueryBuilder(&out).Table("bar"))
 	assertStringEquals(t, b.String(), `SELECT "a", "b" FROM "bar" LIMIT 1`)
 }
 
@@ -734,7 +734,7 @@ func TestQRaw(t *testing.T) {
 	}
 	var out Foo
 	b := New()
-	b.Select(b.Q(&out).Raw(`SELECT :columns: FROM :table: WHERE a = ? AND b = ?`, 5, 10))
+	b.Select(b.QueryBuilder(&out).Raw(`SELECT :columns: FROM :table: WHERE a = ? AND b = ?`, 5, 10))
 	assertStringEquals(t, b.String(), `SELECT "a", "b" FROM "foo" WHERE a = 5 AND b = 10`)
 }
 
@@ -745,7 +745,7 @@ func TestQRawPrefix(t *testing.T) {
 	}
 	var out Foo
 	b := New()
-	b.Select(b.Q(&out).Prefix("t").Raw(`SELECT :columns: FROM :table: WHERE a = ? AND b = ?`, 5, 10))
+	b.Select(b.QueryBuilder(&out).Prefix("t").Raw(`SELECT :columns: FROM :table: WHERE a = ? AND b = ?`, 5, 10))
 	assertStringEquals(t, b.String(), `SELECT t."a", t."b" FROM "foo" AS t WHERE a = 5 AND b = 10`)
 }
 
@@ -787,13 +787,13 @@ func TestPrimitive(t *testing.T) {
 	b.Insert(&Foo{1, 0})
 	b.Insert(&Foo{2, 0})
 	b.Transaction()
-	if err := b.Exec(context.Background(), db); err != nil {
+	if err := b.Run(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 
 	{
 		var count int
-		if err := New().QSelect(&count).TableFromStruct(&Foo{}).Fields("COUNT(*)").Query(context.Background(), db); err != nil {
+		if err := New().QueryBuilder(&count).TableFromStruct(&Foo{}).Fields("COUNT(*)").Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 		assertDeepEquals(t, count, 2)
@@ -801,7 +801,7 @@ func TestPrimitive(t *testing.T) {
 
 	{
 		var ids []int8
-		if err := New().QSelect(&ids).TableFromStruct(&Foo{}).Fields("a").Query(context.Background(), db); err != nil {
+		if err := New().QueryBuilder(&ids).TableFromStruct(&Foo{}).Fields("a").Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 		assertDeepEquals(t, ids, []int8{1, 2})
@@ -809,7 +809,7 @@ func TestPrimitive(t *testing.T) {
 
 	{
 		var sum int
-		if err := New().QSelect(&sum).TableFromStruct(&Foo{}).Fields("SUM(a)").Query(context.Background(), db); err != nil {
+		if err := New().QueryBuilder(&sum).TableFromStruct(&Foo{}).Fields("SUM(a)").Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 		assertDeepEquals(t, sum, 3)
@@ -817,7 +817,7 @@ func TestPrimitive(t *testing.T) {
 
 	{
 		var sum sql.NullInt64
-		if err := New().QSelect(&sum).TableFromStruct(&Foo{}).Fields("SUM(a)").Where("a = 4").Query(context.Background(), db); err != nil {
+		if err := New().QueryBuilder(&sum).TableFromStruct(&Foo{}).Fields("SUM(a)").Where("a = 4").Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 		assertDeepEquals(t, sum, sql.NullInt64{})
@@ -825,7 +825,7 @@ func TestPrimitive(t *testing.T) {
 
 	{
 		var count int
-		if err := New().QSelect(&count).TableFromStruct(&Foo{}).Fields("COUNT(*)").Where("a = 4").Query(context.Background(), db); err != nil {
+		if err := New().QueryBuilder(&count).TableFromStruct(&Foo{}).Fields("COUNT(*)").Where("a = 4").Run(context.Background(), db); err != nil {
 			t.Fatal(err)
 		}
 		assertDeepEquals(t, count, 0)
@@ -853,7 +853,7 @@ func TestGenericField(t *testing.T) {
 	b := New()
 	b.Insert(&Foo{int64(1), 111})
 	b.Insert(&Foo{int8(2), 222})
-	if err := b.Exec(context.Background(), db); err != nil {
+	if err := b.Run(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -882,12 +882,12 @@ func TestDefaultField(t *testing.T) {
 	b.Upsert(&Foo{123, 333})
 	b.Upsert(&Foo{456, 444})
 	assertStringEquals(t, b.String(), `INSERT INTO "foo" ("a", "b") VALUES (DEFAULT, 111) RETURNING NOTHING; INSERT INTO "foo" ("a", "b") VALUES (DEFAULT, 222) RETURNING NOTHING; UPSERT INTO "foo" ("a", "b") VALUES (123, 333) RETURNING NOTHING; UPSERT INTO "foo" ("a", "b") VALUES (456, 444) RETURNING NOTHING`)
-	if err := b.Exec(context.Background(), db); err != nil {
+	if err := b.Run(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 
 	var foo []Foo
-	if err := New().QSelect(&foo).OrderBy("b", true).Query(context.Background(), db); err != nil {
+	if err := New().QueryBuilder(&foo).OrderBy("b", true).Run(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 	assertDeepEquals(t, foo[0].B, 111)

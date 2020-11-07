@@ -14,14 +14,7 @@ type orderByField struct {
 	asc   bool
 }
 
-type postKind int
-
-const (
-	postNone postKind = iota
-	postSelect
-)
-
-type QBuilder struct {
+type QueryBuilder struct {
 	b             *Batch
 	into          interface{}
 	whereExprs    []ExprBuilder
@@ -36,51 +29,32 @@ type QBuilder struct {
 	rawDefined    bool
 	prefix        string
 	fields        []string
-
-	postKind postKind
 }
 
-func (b *Batch) QSelect(into ...interface{}) *QBuilder {
-	q := b.Q(into...)
-	q.postKind = postSelect
-	return q
-}
-
-func (b *Batch) Q(into ...interface{}) *QBuilder {
-	if len(into) > 1 {
-		panic("multiple arguments are not allowed, this is a single optional argument")
-	}
-	var intoVal interface{}
-	if len(into) > 0 {
-		intoVal = into[0]
-	}
-	return &QBuilder{b: b, into: intoVal}
-}
-
-func (q *QBuilder) Prefix(prefix string) *QBuilder {
+func (q *QueryBuilder) Prefix(prefix string) *QueryBuilder {
 	q.prefix = prefix
 	return q
 }
 
-func (q *QBuilder) Raw(args ...interface{}) *QBuilder {
+func (q *QueryBuilder) Raw(args ...interface{}) *QueryBuilder {
 	q.raw = q.b.Expr(args...)
 	q.rawDefined = true
 	return q
 }
 
-func (q *QBuilder) setImplicitLimit(isSlice bool) {
+func (q *QueryBuilder) setImplicitLimit(isSlice bool) {
 	if !isSlice {
 		q.limit = 1
 		q.limitDefined = true
 	}
 }
 
-func (q *QBuilder) Table(v string) *QBuilder {
+func (q *QueryBuilder) Table(v string) *QueryBuilder {
 	q.quotedTable = pq.QuoteIdentifier(v)
 	return q
 }
 
-func (q *QBuilder) TableFromStruct(v interface{}) *QBuilder {
+func (q *QueryBuilder) TableFromStruct(v interface{}) *QueryBuilder {
 	val := reflect.ValueOf(v)
 	t, _ := assertPointerToStructOrPointerToSliceOfStructs(val.Type())
 	si := GetStructInfo(t, q.b.customResolver())
@@ -88,34 +62,34 @@ func (q *QBuilder) TableFromStruct(v interface{}) *QBuilder {
 	return q
 }
 
-func (q *QBuilder) Fields(v ...string) *QBuilder {
+func (q *QueryBuilder) Fields(v ...string) *QueryBuilder {
 	q.fields = v
 	return q
 }
 
-func (q *QBuilder) Into(v interface{}) *QBuilder {
+func (q *QueryBuilder) Into(v interface{}) *QueryBuilder {
 	q.into = v
 	return q
 }
 
-func (q *QBuilder) Where(args ...interface{}) *QBuilder {
+func (q *QueryBuilder) Where(args ...interface{}) *QueryBuilder {
 	q.whereExprs = append(q.whereExprs, q.b.Expr(args...))
 	return q
 }
 
-func (q *QBuilder) Limit(v int64) *QBuilder {
+func (q *QueryBuilder) Limit(v int64) *QueryBuilder {
 	q.limit = v
 	q.limitDefined = true
 	return q
 }
 
-func (q *QBuilder) Offset(v int64) *QBuilder {
+func (q *QueryBuilder) Offset(v int64) *QueryBuilder {
 	q.offset = v
 	q.offsetDefined = true
 	return q
 }
 
-func (q *QBuilder) OrderBy(field string, asc bool) *QBuilder {
+func (q *QueryBuilder) OrderBy(field string, asc bool) *QueryBuilder {
 	q.orderByFields = append(q.orderByFields, orderByField{
 		field: field,
 		asc:   asc,
@@ -123,12 +97,12 @@ func (q *QBuilder) OrderBy(field string, asc bool) *QBuilder {
 	return q
 }
 
-func (q *QBuilder) WithErr(errp *error) *QBuilder {
+func (q *QueryBuilder) WithErr(errp *error) *QueryBuilder {
 	q.errp = errp
 	return q
 }
 
-func (q *QBuilder) quotedTableName(si *StructInfo) string {
+func (q *QueryBuilder) quotedTableName(si *StructInfo) string {
 	tname := q.quotedTable
 	if tname == "" {
 		tname = si.QuotedName
@@ -140,7 +114,7 @@ func (q *QBuilder) quotedTableName(si *StructInfo) string {
 	return tname
 }
 
-func (q *QBuilder) prefixedFieldName(name string) string {
+func (q *QueryBuilder) prefixedFieldName(name string) string {
 	if q.prefix != "" {
 		return q.prefix + "." + name
 	} else {
@@ -148,7 +122,7 @@ func (q *QBuilder) prefixedFieldName(name string) string {
 	}
 }
 
-func (q *QBuilder) columns(sb *strings.Builder, si *StructInfo) {
+func (q *QueryBuilder) columns(sb *strings.Builder, si *StructInfo) {
 	fieldNamesWriter := helper.NewListWriter(sb)
 	if q.fields != nil {
 		for _, f := range q.fields {
@@ -163,7 +137,7 @@ func (q *QBuilder) columns(sb *strings.Builder, si *StructInfo) {
 
 var specialRegexp = regexp.MustCompile(`:[a-z]+:`)
 
-func (q *QBuilder) writeRawTo(sb *strings.Builder, si *StructInfo) {
+func (q *QueryBuilder) writeRawTo(sb *strings.Builder, si *StructInfo) {
 	var tmp strings.Builder
 	q.raw.WriteTo(&tmp)
 	sb.WriteString(specialRegexp.ReplaceAllStringFunc(tmp.String(), func(v string) string {
@@ -183,7 +157,7 @@ func (q *QBuilder) writeRawTo(sb *strings.Builder, si *StructInfo) {
 	}))
 }
 
-func (q *QBuilder) WriteTo(sb *strings.Builder, si *StructInfo) {
+func (q *QueryBuilder) WriteTo(sb *strings.Builder, si *StructInfo) {
 	// WHERE
 	if len(q.whereExprs) != 0 {
 		sb.WriteString(" WHERE ")
@@ -230,21 +204,11 @@ func (q *QBuilder) WriteTo(sb *strings.Builder, si *StructInfo) {
 	}
 }
 
-func (q *QBuilder) End() *Batch {
-	switch q.postKind {
-	case postSelect:
-		return q.b.Select(q)
-	default:
-		return q.b
-	}
+func (q *QueryBuilder) End() *Batch {
+	return q.b.Select(q)
 }
 
-// Shortcut for q.End().Query(ctx, conn)
-func (q *QBuilder) Query(ctx context.Context, conn QueryContexter) error {
-	return q.End().Query(ctx, conn)
-}
-
-// Shortcut for q.End().Exec(ctx, conn)
-func (q *QBuilder) Exec(ctx context.Context, conn ExecContexter) error {
-	return q.End().Exec(ctx, conn)
+// shortcut for q.End().Run(ctx, conn)
+func (q *QueryBuilder) Run(ctx context.Context, conn ExecQueryContexter) error {
+	return q.End().Run(ctx, conn)
 }
