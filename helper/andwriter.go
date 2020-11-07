@@ -1,22 +1,22 @@
-package sqlbatch
+package helper
 
 import (
 	"strings"
 )
 
-type andWriter struct {
+type AndWriter struct {
 	sb    *strings.Builder
 	empty bool
 }
 
-func newAndWriter(sb *strings.Builder) andWriter {
-	return andWriter{
+func NewAndWriter(sb *strings.Builder) AndWriter {
+	return AndWriter{
 		sb:    sb,
 		empty: true,
 	}
 }
 
-func (lw *andWriter) WriteString(s string) {
+func (lw *AndWriter) WriteString(s string) {
 	if !lw.empty {
 		lw.sb.WriteString(" AND ")
 	} else {
@@ -25,7 +25,7 @@ func (lw *andWriter) WriteString(s string) {
 	lw.sb.WriteString(s)
 }
 
-func (lw *andWriter) Next() *strings.Builder {
+func (lw *AndWriter) Next() *strings.Builder {
 	if !lw.empty {
 		lw.sb.WriteString(" AND ")
 	} else {

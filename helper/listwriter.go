@@ -1,22 +1,22 @@
-package sqlbatch
+package helper
 
 import (
 	"strings"
 )
 
-type listWriter struct {
+type ListWriter struct {
 	sb    *strings.Builder
 	empty bool
 }
 
-func newListWriter(sb *strings.Builder) listWriter {
-	return listWriter{
+func NewListWriter(sb *strings.Builder) ListWriter {
+	return ListWriter{
 		sb:    sb,
 		empty: true,
 	}
 }
 
-func (lw *listWriter) WriteString(s string) {
+func (lw *ListWriter) WriteString(s string) {
 	if !lw.empty {
 		lw.sb.WriteString(", ")
 	} else {
@@ -25,7 +25,7 @@ func (lw *listWriter) WriteString(s string) {
 	lw.sb.WriteString(s)
 }
 
-func (lw *listWriter) Next() *strings.Builder {
+func (lw *ListWriter) Next() *strings.Builder {
 	if !lw.empty {
 		lw.sb.WriteString(", ")
 	} else {

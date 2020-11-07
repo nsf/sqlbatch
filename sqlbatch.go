@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"github.com/lib/pq"
+	"github.com/nsf/sqlbatch/helper"
 	"reflect"
 	"strings"
 	"time"
@@ -14,8 +15,6 @@ import (
 type Batch struct {
 	transaction                  bool
 	stmtBuilder                  strings.Builder
-	liveNestedBuilders           map[int]string
-	nextNestedBuilderID          int
 	timeNowFunc                  func() time.Time
 	now                          time.Time
 	readIntos                    []readInto
@@ -105,7 +104,7 @@ func assertHasPrimaryKeys(si *StructInfo) {
 }
 
 func writePrimaryKeysWhereCondition(si *StructInfo, ptr unsafe.Pointer, sb *strings.Builder) {
-	pkWriter := newAndWriter(sb)
+	pkWriter := helper.NewAndWriter(sb)
 	for _, f := range si.PrimaryKeys {
 		b := pkWriter.Next()
 		b.WriteString(f.QuotedName)
@@ -116,7 +115,7 @@ func writePrimaryKeysWhereCondition(si *StructInfo, ptr unsafe.Pointer, sb *stri
 }
 
 func writeFieldValues(si *StructInfo, ptr unsafe.Pointer, sb *strings.Builder, now time.Time, insert bool) {
-	fieldValuesWriter := newListWriter(sb)
+	fieldValuesWriter := helper.NewListWriter(sb)
 	for _, f := range si.Fields {
 		if f.IsCreated() || f.IsUpdated() {
 			setTime(&f, ptr, now)
@@ -194,7 +193,9 @@ func (b *Batch) InsertInto(v interface{}, table string) *Batch {
 	structVal := reflect.ValueOf(v)
 	t, isSlice := assertPointerToStructOrSliceOfStructs(structVal.Type())
 	if isSlice {
-		return b.BulkInsert(v)
+		serter := bulkSerter{command: "INSERT", b: b}
+		serter.addMany(v)
+		return serter.commit()
 	}
 
 	ptr := unsafe.Pointer(structVal.Pointer())
@@ -204,7 +205,7 @@ func (b *Batch) InsertInto(v interface{}, table string) *Batch {
 	sb.WriteString("INSERT INTO ")
 	writeTableName(si, table, sb)
 	sb.WriteString(" (")
-	fieldNamesWriter := newListWriter(sb)
+	fieldNamesWriter := helper.NewListWriter(sb)
 	for _, f := range si.Fields {
 		fieldNamesWriter.WriteString(f.QuotedName)
 	}
@@ -222,7 +223,9 @@ func (b *Batch) UpsertInto(v interface{}, table string) *Batch {
 	structVal := reflect.ValueOf(v)
 	t, isSlice := assertPointerToStructOrSliceOfStructs(structVal.Type())
 	if isSlice {
-		return b.BulkUpsert(v)
+		serter := bulkSerter{command: "UPSERT", b: b}
+		serter.addMany(v)
+		return serter.commit()
 	}
 
 	ptr := unsafe.Pointer(structVal.Pointer())
@@ -232,7 +235,7 @@ func (b *Batch) UpsertInto(v interface{}, table string) *Batch {
 	sb.WriteString("UPSERT INTO ")
 	writeTableName(si, table, sb)
 	sb.WriteString(" (")
-	fieldNamesWriter := newListWriter(sb)
+	fieldNamesWriter := helper.NewListWriter(sb)
 	for _, f := range si.Fields {
 		fieldNamesWriter.WriteString(f.QuotedName)
 	}
@@ -258,7 +261,7 @@ func (b *Batch) UpdateInto(v interface{}, table string) *Batch {
 	sb.WriteString("UPDATE ")
 	writeTableName(si, table, sb)
 	sb.WriteString(" SET ")
-	valsWriter := newListWriter(sb)
+	valsWriter := helper.NewListWriter(sb)
 	for _, f := range si.NonPrimaryKeys {
 		if f.IsUpdated() {
 			setTime(f, ptr, b.timeNow())

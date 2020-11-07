@@ -3,6 +3,7 @@ package sqlbatch
 import (
 	"context"
 	"github.com/lib/pq"
+	"github.com/nsf/sqlbatch/helper"
 	"reflect"
 	"regexp"
 	"strings"
@@ -148,7 +149,7 @@ func (q *QBuilder) prefixedFieldName(name string) string {
 }
 
 func (q *QBuilder) columns(sb *strings.Builder, si *StructInfo) {
-	fieldNamesWriter := newListWriter(sb)
+	fieldNamesWriter := helper.NewListWriter(sb)
 	if q.fields != nil {
 		for _, f := range q.fields {
 			fieldNamesWriter.WriteString(q.prefixedFieldName(f))
