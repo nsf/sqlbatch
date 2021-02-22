@@ -311,6 +311,22 @@ func (b *Batch) Delete(v interface{}) *Batch {
 }
 
 func (b *Batch) DeleteFrom(v interface{}, table string) *Batch {
+	if q, ok := v.(*QueryBuilder); ok {
+		if table == "" {
+			if q.quotedTable == "" {
+				panic("when using Delete/DeleteFrom with QueryBuilder, table name must be provided via QueryBuilder or directly")
+			}
+			table = q.quotedTable
+		} else {
+			table = pq.QuoteIdentifier(table)
+		}
+		sb := b.beginNextStmt()
+		sb.WriteString("DELETE FROM ")
+		sb.WriteString(table)
+		q.WriteTo(sb, nil)
+		return b
+	}
+
 	structVal := reflect.ValueOf(v)
 	t := assertPointerToStruct(structVal.Type())
 
@@ -333,6 +349,9 @@ func (b *Batch) QueryBuilder(into ...interface{}) *QueryBuilder {
 	}
 	var intoVal interface{}
 	if len(into) > 0 {
+		if table, ok := into[0].(string); ok {
+			return (&QueryBuilder{b: b}).Table(table)
+		}
 		intoVal = into[0]
 	}
 	return &QueryBuilder{b: b, into: intoVal}

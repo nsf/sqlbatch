@@ -897,3 +897,27 @@ func TestDefaultField(t *testing.T) {
 	assertDeepEquals(t, foo[2].A, 123)
 	assertDeepEquals(t, foo[3].A, 456)
 }
+
+func TestDeleteQueryBuilder(t *testing.T) {
+	{
+		b := New()
+		b.Delete(b.QueryBuilder().Table("mytable").Where("foo = ?", "bar"))
+		assertStringEquals(t, b.String(), `DELETE FROM "mytable" WHERE foo = 'bar'`)
+	}
+	{
+		b := New()
+		b.DeleteFrom(b.QueryBuilder().Where("foo = ?", "bar"), "mytable")
+		assertStringEquals(t, b.String(), `DELETE FROM "mytable" WHERE foo = 'bar'`)
+	}
+	{
+		type Mytable struct{}
+		b := New()
+		b.Delete(b.QueryBuilder().TableFromStruct(&Mytable{}).Where("foo = ?", "bar"))
+		assertStringEquals(t, b.String(), `DELETE FROM "mytable" WHERE foo = 'bar'`)
+	}
+	{
+		b := New()
+		b.Delete(b.QueryBuilder("mytable").Where("foo = ?", "bar"))
+		assertStringEquals(t, b.String(), `DELETE FROM "mytable" WHERE foo = 'bar'`)
+	}
+}
