@@ -55,12 +55,11 @@ func (b *bulkSerter) addMany(v interface{}) *bulkSerter {
 	insert := b.command == "INSERT"
 	for i := 0; i < sliceLen; i++ {
 		sb.WriteString("(")
-		writeFieldValues(si, ptr, sb, b.b.timeNow(), insert)
+		writeFieldValues(si, unsafe.Pointer(uintptr(ptr)+structSize*uintptr(i)), sb, b.b.timeNow(), insert)
 		sb.WriteString(")")
 		if i != sliceLen-1 {
 			sb.WriteString(", ")
 		}
-		ptr = unsafe.Pointer(uintptr(ptr) + structSize)
 	}
 	return b
 }
