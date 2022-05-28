@@ -103,7 +103,7 @@ func (b *Batch) parallelQuery(ctx context.Context, conn QueryContexter) error {
 	for i, r := range b.readIntos {
 		i, r := i, r
 		go func() {
-			rows, err := conn.QueryContext(ctx, r.stmt.String())
+			rows, err := conn.QueryContext(ctx, r.stmt)
 			if err != nil {
 				errors[i] = err
 				wg.Done()
@@ -392,16 +392,18 @@ func (b *Batch) Select(qs ...*QueryBuilder) *Batch {
 			}
 		}
 
+		var sb strings.Builder
 		if q.rawDefined {
-			q.writeRawTo(&ri.stmt, si)
+			q.writeRawTo(&sb, si)
 		} else {
-			ri.stmt.WriteString("SELECT ")
-			q.columns(&ri.stmt, si)
-			ri.stmt.WriteString(" FROM ")
-			ri.stmt.WriteString(q.quotedTableName(si))
+			sb.WriteString("SELECT ")
+			q.columns(&sb, si)
+			sb.WriteString(" FROM ")
+			sb.WriteString(q.quotedTableName(si))
 			q.setImplicitLimit(isSlice)
-			q.WriteTo(&ri.stmt, si)
+			q.WriteTo(&sb, si)
 		}
+		ri.stmt = sb.String()
 
 		b.readIntos = append(b.readIntos, ri)
 	}
@@ -453,7 +455,7 @@ func (b *Batch) Expr(args ...interface{}) ExprBuilder {
 func (b *Batch) String() string {
 	for _, r := range b.readIntos {
 		sb := b.beginNextStmt()
-		sb.WriteString(r.stmt.String())
+		sb.WriteString(r.stmt)
 	}
 
 	var out string

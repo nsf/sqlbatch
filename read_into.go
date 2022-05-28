@@ -2,7 +2,6 @@ package sqlbatch
 
 import (
 	"reflect"
-	"strings"
 	"unsafe"
 )
 
@@ -13,5 +12,5 @@ type readInto struct {
 	slice     bool
 	errp      *error
 	primitive bool // is primitive type? (fallback to reflect API)
-	stmt      strings.Builder
+	stmt      string
 }
