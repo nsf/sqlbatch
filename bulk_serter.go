@@ -27,7 +27,7 @@ func (b *bulkSerter) writeHeader() {
 	sb.WriteString(") VALUES ")
 }
 
-func (b *bulkSerter) addMany(v interface{}) *bulkSerter {
+func (b *bulkSerter) addMany(v any) *bulkSerter {
 	sliceVal := reflect.ValueOf(v)
 	t := assertSliceOfStructs(sliceVal.Type())
 

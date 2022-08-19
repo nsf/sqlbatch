@@ -16,7 +16,7 @@ type orderByField struct {
 
 type QueryBuilder struct {
 	b             *Batch
-	into          interface{}
+	into          any
 	whereExprs    []ExprBuilder
 	limit         int64
 	offset        int64
@@ -36,7 +36,7 @@ func (q *QueryBuilder) Prefix(prefix string) *QueryBuilder {
 	return q
 }
 
-func (q *QueryBuilder) Raw(args ...interface{}) *QueryBuilder {
+func (q *QueryBuilder) Raw(args ...any) *QueryBuilder {
 	q.raw = q.b.Expr(args...)
 	q.rawDefined = true
 	return q
@@ -54,7 +54,7 @@ func (q *QueryBuilder) Table(v string) *QueryBuilder {
 	return q
 }
 
-func (q *QueryBuilder) TableFromStruct(v interface{}) *QueryBuilder {
+func (q *QueryBuilder) TableFromStruct(v any) *QueryBuilder {
 	val := reflect.ValueOf(v)
 	t, _ := assertPointerToStructOrPointerToSliceOfStructs(val.Type())
 	si := GetStructInfo(t, q.b.customResolver())
@@ -67,12 +67,12 @@ func (q *QueryBuilder) Fields(v ...string) *QueryBuilder {
 	return q
 }
 
-func (q *QueryBuilder) Into(v interface{}) *QueryBuilder {
+func (q *QueryBuilder) Into(v any) *QueryBuilder {
 	q.into = v
 	return q
 }
 
-func (q *QueryBuilder) Where(args ...interface{}) *QueryBuilder {
+func (q *QueryBuilder) Where(args ...any) *QueryBuilder {
 	q.whereExprs = append(q.whereExprs, q.b.Expr(args...))
 	return q
 }

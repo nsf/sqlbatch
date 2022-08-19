@@ -107,84 +107,20 @@ func makeFloat64Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings
 
 //--------------------------------------------------------------------------
 
-func makeIntWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
+func makeGenericIntWriter[T ~int | ~int8 | ~int16 | ~int32 | ~int64](offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
-		val := *(*int)(p)
+		val := *(*T)(p)
 		util.AppendInt64(b, int64(val), false)
-	}
-}
-
-func makeInt8Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
-	return func(structPtr unsafe.Pointer, b *strings.Builder) {
-		p := unsafe.Pointer(uintptr(structPtr) + offset)
-		val := *(*int8)(p)
-		util.AppendInt64(b, int64(val), false)
-	}
-}
-
-func makeInt16Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
-	return func(structPtr unsafe.Pointer, b *strings.Builder) {
-		p := unsafe.Pointer(uintptr(structPtr) + offset)
-		val := *(*int16)(p)
-		util.AppendInt64(b, int64(val), false)
-	}
-}
-
-func makeInt32Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
-	return func(structPtr unsafe.Pointer, b *strings.Builder) {
-		p := unsafe.Pointer(uintptr(structPtr) + offset)
-		val := *(*int32)(p)
-		util.AppendInt64(b, int64(val), false)
-	}
-}
-
-func makeInt64Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
-	return func(structPtr unsafe.Pointer, b *strings.Builder) {
-		p := unsafe.Pointer(uintptr(structPtr) + offset)
-		val := *(*int64)(p)
-		util.AppendInt64(b, val, false)
 	}
 }
 
 //--------------------------------------------------------------------------
 
-func makeUintWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
+func makeGenericUintWriter[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
-		val := *(*uint)(p)
-		util.AppendUint64(b, uint64(val), false)
-	}
-}
-
-func makeUint8Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
-	return func(structPtr unsafe.Pointer, b *strings.Builder) {
-		p := unsafe.Pointer(uintptr(structPtr) + offset)
-		val := *(*uint8)(p)
-		util.AppendUint64(b, uint64(val), false)
-	}
-}
-
-func makeUint16Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
-	return func(structPtr unsafe.Pointer, b *strings.Builder) {
-		p := unsafe.Pointer(uintptr(structPtr) + offset)
-		val := *(*uint16)(p)
-		util.AppendUint64(b, uint64(val), false)
-	}
-}
-
-func makeUint32Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
-	return func(structPtr unsafe.Pointer, b *strings.Builder) {
-		p := unsafe.Pointer(uintptr(structPtr) + offset)
-		val := *(*uint32)(p)
-		util.AppendUint64(b, uint64(val), false)
-	}
-}
-
-func makeUint64Writer(offset uintptr) func(structPtr unsafe.Pointer, b *strings.Builder) {
-	return func(structPtr unsafe.Pointer, b *strings.Builder) {
-		p := unsafe.Pointer(uintptr(structPtr) + offset)
-		val := *(*uint64)(p)
+		val := *(*T)(p)
 		util.AppendUint64(b, uint64(val), false)
 	}
 }

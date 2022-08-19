@@ -38,7 +38,7 @@ func dbExec(t *testing.T, db *sql.DB, query string) {
 	}
 }
 
-func dbScanSingleRow(t *testing.T, db *sql.DB, query string, vals ...interface{}) {
+func dbScanSingleRow(t *testing.T, db *sql.DB, query string, vals ...any) {
 	rows, err := db.Query(query)
 	if err != nil {
 		t.Errorf("select failure: %s", err)
@@ -61,7 +61,7 @@ func assertStringEquals(t *testing.T, v, expected string) {
 	}
 }
 
-func assertDeepEquals(t *testing.T, a, b interface{}) {
+func assertDeepEquals(t *testing.T, a, b any) {
 	if !reflect.DeepEqual(a, b) {
 		t.Errorf("equality expected, got: %v != %v", a, b)
 	}

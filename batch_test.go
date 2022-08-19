@@ -371,14 +371,14 @@ func TestGetStructInfo(t *testing.T) {
 	ptr := unsafe.Pointer(v)
 	si := GetStructInfo(reflect.TypeOf(v).Elem(), nil)
 
-	assertField := func(idx *int, fs []FieldInfo, name string, val interface{}, primaryKey bool, customMatchers ...func(t *testing.T, f FieldInfo)) {
+	assertField := func(idx *int, fs []FieldInfo, name string, val any, primaryKey bool, customMatchers ...func(t *testing.T, f FieldInfo)) {
 		f := fs[*idx]
 		*idx++
 		if f.Name != name {
 			t.Errorf("field %q name mismatch: %q != %q", f.Name, f.Name, name)
 		}
 
-		var pfval interface{}
+		var pfval any
 		f.Interface.GetPtr(ptr, &pfval)
 		fval := reflect.ValueOf(pfval).Elem().Interface()
 		if !reflect.DeepEqual(fval, val) {
@@ -846,7 +846,7 @@ func TestGenericField(t *testing.T) {
 	`)
 
 	type Foo struct {
-		A interface{}
+		A any
 		B int
 	}
 

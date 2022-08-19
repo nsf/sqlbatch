@@ -117,7 +117,7 @@ func (b *Batch) parallelQuery(ctx context.Context, conn QueryContexter) error {
 			} else {
 				numArgs = len(r.si.Fields)
 			}
-			ptrs := make([]interface{}, numArgs)
+			ptrs := make([]any, numArgs)
 			if r.slice {
 				val := r.val.Elem() // get the slice itself
 				idx := 0
@@ -209,17 +209,17 @@ func (b *Batch) SetCustomFieldInterfaceResolver(f FieldInterfaceResolver) *Batch
 	return b
 }
 
-func (b *Batch) Raw(args ...interface{}) *Batch {
+func (b *Batch) Raw(args ...any) *Batch {
 	sb := b.beginNextStmt()
 	b.Expr(args...).WriteTo(sb)
 	return b
 }
 
-func (b *Batch) Insert(v interface{}) *Batch {
+func (b *Batch) Insert(v any) *Batch {
 	return b.InsertInto(v, "")
 }
 
-func (b *Batch) InsertInto(v interface{}, table string) *Batch {
+func (b *Batch) InsertInto(v any, table string) *Batch {
 	structVal := reflect.ValueOf(v)
 	t, isSlice := assertPointerToStructOrSliceOfStructs(structVal.Type())
 	if isSlice {
@@ -245,11 +245,11 @@ func (b *Batch) InsertInto(v interface{}, table string) *Batch {
 	return b
 }
 
-func (b *Batch) Upsert(v interface{}) *Batch {
+func (b *Batch) Upsert(v any) *Batch {
 	return b.UpsertInto(v, "")
 }
 
-func (b *Batch) UpsertInto(v interface{}, table string) *Batch {
+func (b *Batch) UpsertInto(v any, table string) *Batch {
 	structVal := reflect.ValueOf(v)
 	t, isSlice := assertPointerToStructOrSliceOfStructs(structVal.Type())
 	if isSlice {
@@ -275,11 +275,11 @@ func (b *Batch) UpsertInto(v interface{}, table string) *Batch {
 	return b
 }
 
-func (b *Batch) Update(v interface{}) *Batch {
+func (b *Batch) Update(v any) *Batch {
 	return b.UpdateInto(v, "")
 }
 
-func (b *Batch) UpdateInto(v interface{}, table string) *Batch {
+func (b *Batch) UpdateInto(v any, table string) *Batch {
 	structVal := reflect.ValueOf(v)
 	t := assertPointerToStruct(structVal.Type())
 
@@ -306,11 +306,11 @@ func (b *Batch) UpdateInto(v interface{}, table string) *Batch {
 	return b
 }
 
-func (b *Batch) Delete(v interface{}) *Batch {
+func (b *Batch) Delete(v any) *Batch {
 	return b.DeleteFrom(v, "")
 }
 
-func (b *Batch) DeleteFrom(v interface{}, table string) *Batch {
+func (b *Batch) DeleteFrom(v any, table string) *Batch {
 	if q, ok := v.(*QueryBuilder); ok {
 		if table == "" {
 			if q.quotedTable == "" {
@@ -342,12 +342,12 @@ func (b *Batch) DeleteFrom(v interface{}, table string) *Batch {
 	return b
 }
 
-func (b *Batch) QueryBuilder(into ...interface{}) *QueryBuilder {
+func (b *Batch) QueryBuilder(into ...any) *QueryBuilder {
 	b.numUncommittedQs++
 	if len(into) > 1 {
 		panic("multiple arguments are not allowed, this is a single optional argument")
 	}
-	var intoVal interface{}
+	var intoVal any
 	if len(into) > 0 {
 		if table, ok := into[0].(string); ok {
 			return (&QueryBuilder{b: b}).Table(table)
@@ -411,11 +411,11 @@ func (b *Batch) Select(qs ...*QueryBuilder) *Batch {
 }
 
 type ExecContexter interface {
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
 type QueryContexter interface {
-	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 type ExecQueryContexter interface {
@@ -445,7 +445,7 @@ func (b *Batch) Transaction() *Batch {
 
 var ErrNotFound = errors.New("not found")
 
-func (b *Batch) Expr(args ...interface{}) ExprBuilder {
+func (b *Batch) Expr(args ...any) ExprBuilder {
 	if len(args) == 0 {
 		return ExprBuilder{b: b}
 	}

@@ -11,10 +11,10 @@ import (
 // Write is also used for expression formatting
 // Conv is used for expression formatting
 type FieldInterface struct {
-	Set    func(structPtr unsafe.Pointer, iface interface{})
-	GetPtr func(structPtr unsafe.Pointer, ifacePtr *interface{})
+	Set    func(structPtr unsafe.Pointer, iface any)
+	GetPtr func(structPtr unsafe.Pointer, ifacePtr *any)
 	Write  func(structPtr unsafe.Pointer, b *strings.Builder)
-	Conv   func(iface interface{}, b *strings.Builder)
+	Conv   func(iface any, b *strings.Builder)
 }
 
 type FieldInfoFlag uint32

@@ -28,7 +28,7 @@ type ExprBuilder struct {
 
 var placeholderRegexp = regexp.MustCompile(`\?`)
 
-func exprFromArgs(b *Batch, args ...interface{}) *expr {
+func exprFromArgs(b *Batch, args ...any) *expr {
 	if len(args) == 0 {
 		panic("some argument is required")
 	}
@@ -66,7 +66,7 @@ func exprFromArgs(b *Batch, args ...interface{}) *expr {
 	}
 }
 
-func (eb ExprBuilder) And(args ...interface{}) ExprBuilder {
+func (eb ExprBuilder) And(args ...any) ExprBuilder {
 	if eb.root == nil {
 		return ExprBuilder{b: eb.b, root: exprFromArgs(eb.b, args...)}
 	}
@@ -80,7 +80,7 @@ func (eb ExprBuilder) And(args ...interface{}) ExprBuilder {
 	}
 }
 
-func (eb ExprBuilder) Or(args ...interface{}) ExprBuilder {
+func (eb ExprBuilder) Or(args ...any) ExprBuilder {
 	if eb.root == nil {
 		return ExprBuilder{b: eb.b, root: exprFromArgs(eb.b, args...)}
 	}
