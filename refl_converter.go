@@ -42,7 +42,7 @@ func timeConverter(iface any, b *strings.Builder) {
 
 func byteSliceConverter(iface any, b *strings.Builder) {
 	val := iface.([]byte)
-	util.AppendByteSlice(b, val, false)
+	util.AppendByteSlice(b, val, val == nil)
 }
 
 //--------------------------------------------------------------------------

@@ -65,7 +65,7 @@ func makeByteSliceWriter(offset uintptr) func(structPtr unsafe.Pointer, b *strin
 	return func(structPtr unsafe.Pointer, b *strings.Builder) {
 		p := unsafe.Pointer(uintptr(structPtr) + offset)
 		val := *(*[]byte)(p)
-		util.AppendByteSlice(b, val, false)
+		util.AppendByteSlice(b, val, val == nil)
 	}
 }
 

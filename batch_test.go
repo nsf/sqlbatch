@@ -14,6 +14,72 @@ import (
 	"unsafe"
 )
 
+func TestBytesNull(t *testing.T) {
+	type FooBar struct {
+		ID    int64 `db:"primary_key"`
+		Value []byte
+	}
+
+	b := New()
+	b.Insert([]FooBar{
+		FooBar{ID: 1, Value: nil},
+		FooBar{ID: 2, Value: []byte{}},
+		FooBar{ID: 3, Value: []byte{1}},
+	})
+	query := b.String()
+	t.Log(query)
+
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "foo_bar";
+		CREATE TABLE foo_bar (
+			id INT NOT NULL,
+			value BYTES NULL DEFAULT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (id ASC)
+		)
+	`)
+	dbExec(t, db, query)
+
+	assertVal := func(key int64, val []byte) {
+		var ret []byte
+		dbScanSingleRow(t, db, "SELECT value FROM foo_bar WHERE id = "+fmt.Sprint(key), &ret)
+		if !reflect.DeepEqual(ret, val) {
+			t.Errorf("value mismatch: %v vs %v", ret, val)
+		}
+	}
+
+	assertKey := func(val []byte, key int64) {
+		t.Helper()
+		var v FooBar
+		b := New()
+		q := b.QueryBuilder(&v)
+		if val == nil {
+			q.Where("value IS NULL")
+		} else {
+			q.Where("value = ?", val)
+		}
+		b.Select(q)
+		t.Log(b.String())
+		err := b.Run(context.Background(), db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if key != v.ID {
+			t.Errorf("value mismatch: %v vs %v", key, v.ID)
+		}
+	}
+
+	assertVal(1, nil)
+	assertVal(2, []byte{})
+	assertVal(3, []byte{1})
+
+	assertKey(nil, 1)
+	assertKey([]byte{}, 2)
+	assertKey([]byte{1}, 3)
+}
+
 func TestBatchInsert(t *testing.T) {
 	type FooBar struct {
 		ID        int `db:"primary_key"`
