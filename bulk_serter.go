@@ -9,10 +9,11 @@ import (
 
 // Bulk (in)serter or (up)serter
 type bulkSerter struct {
-	command string // INSERT or UPSERT
-	builder strings.Builder
-	si      *StructInfo
-	b       *Batch
+	command  string // INSERT or UPSERT
+	builder  strings.Builder
+	si       *StructInfo
+	b        *Batch
+	nonEmpty bool
 }
 
 func (b *bulkSerter) writeHeader() {
@@ -35,6 +36,7 @@ func (b *bulkSerter) addMany(v any) *bulkSerter {
 	if sliceLen == 0 {
 		return b
 	}
+	b.nonEmpty = true
 	structSize := t.Size()
 
 	ptr := unsafe.Pointer(sliceVal.Pointer())
@@ -65,6 +67,9 @@ func (b *bulkSerter) addMany(v any) *bulkSerter {
 }
 
 func (b *bulkSerter) commit() *Batch {
+	if !b.nonEmpty {
+		return b.b
+	}
 	b.builder.WriteString(" RETURNING NOTHING")
 
 	sb := b.b.beginNextStmt()

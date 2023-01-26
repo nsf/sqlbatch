@@ -14,6 +14,19 @@ import (
 	"unsafe"
 )
 
+func TestBulkEmptySlice(t *testing.T) {
+	type FooBar struct {
+		A int64 `db:"primary_key"`
+		B int64
+	}
+	b1 := New()
+	b1.Insert([]FooBar{})
+	assertStringEquals(t, b1.String(), "")
+	b2 := New()
+	b2.Upsert([]FooBar{})
+	assertStringEquals(t, b2.String(), "")
+}
+
 func TestBytesNull(t *testing.T) {
 	type FooBar struct {
 		ID    int64 `db:"primary_key"`
