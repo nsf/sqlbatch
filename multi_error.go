@@ -1,6 +1,7 @@
 package sqlbatch
 
 import (
+	"errors"
 	"strings"
 )
 
@@ -17,4 +18,13 @@ func (m *MultiError) Error() string {
 		sb.WriteString(e.Error())
 	}
 	return sb.String()
+}
+
+func (m *MultiError) Is(target error) bool {
+	for _, e := range m.Errors {
+		if !errors.Is(e, target) {
+			return false
+		}
+	}
+	return true
 }

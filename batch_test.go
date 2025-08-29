@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/lib/pq"
 	"math"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -998,5 +1000,56 @@ func TestDeleteQueryBuilder(t *testing.T) {
 		b := New()
 		b.Delete(b.QueryBuilder("mytable").Where("foo = ?", "bar"))
 		assertStringEquals(t, b.String(), `DELETE FROM "mytable" WHERE foo = 'bar'`)
+	}
+}
+
+func TestBLNS(t *testing.T) {
+	db := openTestDBConnection(t)
+	defer db.Close()
+
+	dbExec(t, db, `
+		DROP TABLE IF EXISTS "blns";
+		CREATE TABLE blns (
+			id INT NOT NULL,
+			value STRING NOT NULL,
+			CONSTRAINT "primary" PRIMARY KEY (id ASC)
+		)
+	`)
+
+	type Blns struct {
+		ID    int `db:"primary_key"`
+		Value string
+	}
+
+	data, err := os.ReadFile("testdata/blns.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blns []string
+	if err := json.Unmarshal(data, &blns); err != nil {
+		t.Fatal(err)
+	}
+	for i, ns := range blns {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			b := New()
+			b.Insert(&Blns{
+				ID:    i + 1,
+				Value: ns,
+			})
+			if err := b.Run(context.Background(), db); err != nil {
+				t.Fatal(err)
+			}
+
+			var out Blns
+			qb := New()
+			qb.Select(qb.QueryBuilder(&out).Where("id = ?", i+1))
+			if err := qb.Run(context.Background(), db); err != nil {
+				t.Fatal(err)
+			}
+
+			if out.Value != ns {
+				t.Errorf("mismatch, %q != %q", out.Value, ns)
+			}
+		})
 	}
 }
